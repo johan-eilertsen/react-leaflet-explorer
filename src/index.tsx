@@ -1,32 +1,95 @@
 "use client";
 
+import { Combobox } from "@base-ui/react/combobox";
 import type { Feature, FeatureCollection, Geometry } from "geojson";
 import type { LayerGroup, Map as LeafletMap, PathOptions } from "leaflet";
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 
-export type MapWorkspaceFeature = Feature<Geometry, {
+export type MapExplorerFeature = Feature<Geometry, {
   id: string;
-  editId?: string;
   label: string;
   type: string;
+  typeLabel?: string;
+  description?: string;
+  searchText?: string;
+  editId?: string;
   [key: string]: unknown;
 }>;
 
-export type MapWorkspaceControlActions = {
+export type MapExplorerFilter = {
+  value: string;
+  label: string;
+};
+
+export type MapExplorerLabels = {
+  search: string;
+  searchPlaceholder: string;
+  filter: string;
+  allTypes: string;
+  reset: string;
+  noResults: string;
+  fullscreen: string;
+  exitFullscreen: string;
+  zoomIn: string;
+  zoomOut: string;
+  selectedPlace: string;
+};
+
+export type MapExplorerRenderSelected = (
+  feature: MapExplorerFeature,
+  actions: { clearSelection: () => void },
+) => ReactNode;
+
+export type MapExplorerProps = {
+  features: MapExplorerFeature[];
+  tileUrl?: string;
+  attribution?: string;
+  ariaLabel?: string;
+  selectedId?: string | null;
+  defaultSelectedId?: string | null;
+  onSelect?: (id: string | null) => void;
+  onViewportChange?: (ids: string[]) => void;
+  onVertexMove?: (featureId: string, vertexIndex: number, coordinate: [number, number]) => void;
+  editableFeatureIds?: string[];
+  pathOptions?: (feature: MapExplorerFeature, selected: boolean) => PathOptions;
+  filters?: MapExplorerFilter[];
+  labels?: Partial<MapExplorerLabels>;
+  bounds?: [[number, number], [number, number]];
+  center?: [number, number];
+  initialZoom?: number;
+  minZoom?: number;
+  maxZoom?: number;
+  maxFitZoom?: number;
+  className?: string;
+  style?: CSSProperties;
+  renderSelected?: MapExplorerRenderSelected;
+  selectedActions?: ReactNode | ((feature: MapExplorerFeature) => ReactNode);
+};
+
+export type MapCanvasActions = {
   fullscreen: boolean;
   toggleFullscreen: () => Promise<void>;
   zoomIn: () => void;
   zoomOut: () => void;
 };
 
-export type MapWorkspaceProps = {
-  features: MapWorkspaceFeature[];
+export type MapCanvasProps = {
+  features: MapExplorerFeature[];
   selectedId: string | null;
   onSelect: (id: string) => void;
   onViewportChange?: (ids: string[]) => void;
   onVertexMove?: (featureId: string, vertexIndex: number, coordinate: [number, number]) => void;
   editableFeatureIds?: string[];
-  pathOptions: (feature: MapWorkspaceFeature, selected: boolean) => PathOptions;
+  pathOptions: (feature: MapExplorerFeature, selected: boolean) => PathOptions;
   bounds?: [[number, number], [number, number]];
   center?: [number, number];
   initialZoom?: number;
@@ -40,14 +103,210 @@ export type MapWorkspaceProps = {
   frameClassName?: string;
   selectedOverlay?: ReactNode;
   topOverlay?: ReactNode;
-  renderControls?: (actions: MapWorkspaceControlActions) => ReactNode;
+  renderControls?: (actions: MapCanvasActions) => ReactNode;
 };
 
-function collection(features: MapWorkspaceFeature[]): FeatureCollection {
+const defaultLabels: MapExplorerLabels = {
+  search: "Search places",
+  searchPlaceholder: "Search by name",
+  filter: "Filter by type",
+  allTypes: "All types",
+  reset: "Reset filters",
+  noResults: "No places match your search.",
+  fullscreen: "Open map in fullscreen",
+  exitFullscreen: "Exit fullscreen",
+  zoomIn: "Zoom in",
+  zoomOut: "Zoom out",
+  selectedPlace: "Selected place",
+};
+
+const defaultCenter: [number, number] = [65.762, 11.723];
+
+export function filterMapFeatures(features: MapExplorerFeature[], query: string, type = "all") {
+  const needle = query.trim().toLocaleLowerCase();
+  return features.filter((feature) => {
+    if (type !== "all" && feature.properties.type !== type) return false;
+    if (!needle) return true;
+    const haystack = `${feature.properties.label} ${feature.properties.typeLabel ?? feature.properties.type} ${feature.properties.searchText ?? ""}`.toLocaleLowerCase();
+    return haystack.includes(needle);
+  });
+}
+
+function collection(features: MapExplorerFeature[]): FeatureCollection {
   return { type: "FeatureCollection", features };
 }
 
-export function MapWorkspace({
+function defaultPathOptions(_feature: MapExplorerFeature, selected: boolean): PathOptions {
+  return {
+    color: selected ? "var(--map-explorer-selected)" : "var(--map-explorer-line)",
+    fillColor: selected ? "var(--map-explorer-selected-fill)" : "var(--map-explorer-fill)",
+    fillOpacity: selected ? 0.45 : 0.25,
+    opacity: 1,
+    weight: selected ? 2 : 1,
+  };
+}
+
+function Icon({ name }: { name: "search" | "chevron" | "expand" | "collapse" | "plus" | "minus" | "close" }) {
+  const paths = {
+    search: <><circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" /></>,
+    chevron: <path d="m7 10 5 5 5-5" />,
+    expand: <><path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5" /></>,
+    collapse: <><path d="M9 3v6H3M15 3v6h6M9 21v-6H3M15 21v-6h6" /></>,
+    plus: <path d="M12 5v14M5 12h14" />,
+    minus: <path d="M5 12h14" />,
+    close: <path d="m6 6 12 12M18 6 6 18" />,
+  };
+  return <svg aria-hidden="true" viewBox="0 0 24 24" className="map-explorer__icon">{paths[name]}</svg>;
+}
+
+function FilterCombobox({
+  value,
+  onValueChange,
+  options,
+  label,
+}: {
+  value: string;
+  onValueChange: (value: string) => void;
+  options: MapExplorerFilter[];
+  label: string;
+}) {
+  const selected = options.find((option) => option.value === value) ?? options[0];
+  const containerRef = useRef<HTMLDivElement>(null);
+  return (
+    <Combobox.Root
+      items={options}
+      value={selected}
+      onValueChange={(next) => next && onValueChange(next.value)}
+      itemToStringLabel={(item) => item.label}
+      isItemEqualToValue={(item, current) => item.value === current.value}
+    >
+      <div ref={containerRef} className="map-explorer__filter">
+        <Combobox.Input aria-label={label} className="map-explorer__filter-input" />
+        <Combobox.Trigger aria-label={label} className="map-explorer__filter-trigger"><Icon name="chevron" /></Combobox.Trigger>
+      </div>
+      <Combobox.Portal container={containerRef}>
+        <Combobox.Positioner sideOffset={6} className="map-explorer__positioner">
+          <Combobox.Popup className="map-explorer__popup">
+            <Combobox.Empty className="map-explorer__empty">No options</Combobox.Empty>
+            <Combobox.List className="map-explorer__list">
+              {options.map((option) => (
+                <Combobox.Item key={option.value} value={option} className="map-explorer__item">
+                  <span>{option.label}</span><Combobox.ItemIndicator aria-hidden="true">✓</Combobox.ItemIndicator>
+                </Combobox.Item>
+              ))}
+            </Combobox.List>
+          </Combobox.Popup>
+        </Combobox.Positioner>
+      </Combobox.Portal>
+    </Combobox.Root>
+  );
+}
+
+export function MapExplorer({
+  features,
+  tileUrl = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+  attribution = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+  ariaLabel = "Interactive map",
+  selectedId: controlledSelectedId,
+  defaultSelectedId = null,
+  onSelect,
+  onViewportChange,
+  onVertexMove,
+  editableFeatureIds,
+  pathOptions = defaultPathOptions,
+  filters,
+  labels: labelsOverride,
+  bounds,
+  center,
+  initialZoom,
+  minZoom,
+  maxZoom,
+  maxFitZoom,
+  className,
+  style,
+  renderSelected,
+  selectedActions,
+}: MapExplorerProps) {
+  const labels = { ...defaultLabels, ...labelsOverride };
+  const [internalSelectedId, setInternalSelectedId] = useState(defaultSelectedId);
+  const selectedId = controlledSelectedId === undefined ? internalSelectedId : controlledSelectedId;
+  const [query, setQuery] = useState("");
+  const [type, setType] = useState("all");
+  const searchId = useId();
+  const typeOptions = useMemo(() => {
+    if (filters) return [{ value: "all", label: labels.allTypes }, ...filters.filter((item) => item.value !== "all")];
+    const types = new Map<string, string>();
+    for (const feature of features) types.set(feature.properties.type, feature.properties.typeLabel ?? feature.properties.type);
+    return [{ value: "all", label: labels.allTypes }, ...[...types].map(([value, label]) => ({ value, label }))];
+  }, [features, filters, labels.allTypes]);
+  const visibleFeatures = useMemo(() => filterMapFeatures(features, query, type), [features, query, type]);
+  const selected = features.find((feature) => feature.properties.id === selectedId) ?? null;
+  const setSelected = useCallback((id: string | null) => {
+    if (controlledSelectedId === undefined) setInternalSelectedId(id);
+    onSelect?.(id);
+  }, [controlledSelectedId, onSelect]);
+  const reset = () => { setQuery(""); setType("all"); };
+  const hasFilters = query.length > 0 || type !== "all";
+
+  return (
+    <section className={`map-explorer ${className ?? ""}`} style={style} aria-label={ariaLabel}>
+      <MapCanvas
+        features={visibleFeatures}
+        selectedId={selectedId}
+        onSelect={setSelected}
+        onViewportChange={onViewportChange}
+        onVertexMove={onVertexMove}
+        editableFeatureIds={editableFeatureIds}
+        pathOptions={pathOptions}
+        bounds={bounds}
+        center={center}
+        initialZoom={initialZoom}
+        minZoom={minZoom}
+        maxZoom={maxZoom}
+        maxFitZoom={maxFitZoom}
+        tileUrl={tileUrl}
+        attribution={attribution}
+        ariaLabel={ariaLabel}
+        topOverlay={(
+          <div className="map-explorer__toolbar-region">
+            <div className="map-explorer__toolbar">
+              <label htmlFor={searchId} className="map-explorer__search">
+                <span className="map-explorer__sr-only">{labels.search}</span>
+                <Icon name="search" />
+                <input id={searchId} type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={labels.searchPlaceholder} />
+              </label>
+              <FilterCombobox value={type} onValueChange={setType} options={typeOptions} label={labels.filter} />
+              <button type="button" className="map-explorer__reset" onClick={reset} disabled={!hasFilters}>{labels.reset}</button>
+            </div>
+            {visibleFeatures.length === 0 ? <p className="map-explorer__status" role="status">{labels.noResults}</p> : null}
+          </div>
+        )}
+        selectedOverlay={selected ? (
+          renderSelected ? renderSelected(selected, { clearSelection: () => setSelected(null) }) : (
+            <aside className="map-explorer__selected" aria-label={labels.selectedPlace}>
+              <button type="button" className="map-explorer__selected-close" onClick={() => setSelected(null)} aria-label={`Close ${selected.properties.label}`}><Icon name="close" /></button>
+              <p className="map-explorer__eyebrow">{selected.properties.typeLabel ?? selected.properties.type}</p>
+              <h2>{selected.properties.label}</h2>
+              {selected.properties.description ? <p>{selected.properties.description}</p> : null}
+              {typeof selectedActions === "function" ? selectedActions(selected) : selectedActions}
+            </aside>
+          )
+        ) : null}
+        renderControls={(actions) => (
+          <>
+            <button type="button" className="map-explorer__map-button map-explorer__fullscreen" onClick={() => void actions.toggleFullscreen()} aria-label={actions.fullscreen ? labels.exitFullscreen : labels.fullscreen} title={actions.fullscreen ? labels.exitFullscreen : labels.fullscreen}><Icon name={actions.fullscreen ? "collapse" : "expand"} /></button>
+            <div className="map-explorer__zoom" aria-label="Zoom controls">
+              <button type="button" onClick={actions.zoomIn} aria-label={labels.zoomIn} title={labels.zoomIn}><Icon name="plus" /></button>
+              <button type="button" onClick={actions.zoomOut} aria-label={labels.zoomOut} title={labels.zoomOut}><Icon name="minus" /></button>
+            </div>
+          </>
+        )}
+      />
+    </section>
+  );
+}
+
+export function MapCanvas({
   features,
   selectedId,
   onSelect,
@@ -56,9 +315,9 @@ export function MapWorkspace({
   editableFeatureIds = [],
   pathOptions,
   bounds,
-  center = [65.762, 11.723],
+  center = defaultCenter,
   initialZoom = 13,
-  minZoom = 10,
+  minZoom = 2,
   maxZoom = 20,
   maxFitZoom = 17,
   tileUrl,
@@ -69,7 +328,7 @@ export function MapWorkspace({
   selectedOverlay,
   topOverlay,
   renderControls,
-}: MapWorkspaceProps) {
+}: MapCanvasProps) {
   const surfaceRef = useRef<HTMLDivElement>(null);
   const mapElementRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<LeafletMap | null>(null);
@@ -85,44 +344,31 @@ export function MapWorkspace({
 
   useEffect(() => {
     let cancelled = false;
+    let removeWheel: (() => void) | undefined;
     const element = mapElementRef.current;
     if (!element || mapRef.current) return;
-
     void import("leaflet").then((module) => {
       if (cancelled || !mapElementRef.current) return;
       const L = module.default;
-      const map = L.map(mapElementRef.current, {
-        center,
-        zoom: initialZoom,
-        minZoom,
-        maxZoom,
-        zoomControl: false,
-        scrollWheelZoom: false,
-        dragging: true,
-        touchZoom: true,
-        zoomSnap: 0,
-      });
+      const map = L.map(mapElementRef.current, { center, zoom: initialZoom, minZoom, maxZoom, zoomControl: false, scrollWheelZoom: false, dragging: true, touchZoom: true, doubleClickZoom: true, keyboard: true, zoomSnap: 0 });
       mapRef.current = map;
       L.tileLayer(tileUrl, { attribution, maxZoom }).addTo(map);
       layersRef.current = L.layerGroup().addTo(map);
-
       let frame: number | null = null;
       let zoomDelta = 0;
       let zoomPoint = L.point(0, 0);
       const applyZoom = () => {
         const next = Math.max(minZoom, Math.min(maxZoom, map.getZoom() - zoomDelta * 0.012));
-        frame = null;
-        zoomDelta = 0;
+        frame = null; zoomDelta = 0;
         map.setZoomAround(zoomPoint, next, { animate: false });
       };
       const handleWheel = (event: WheelEvent) => {
-        event.preventDefault();
-        event.stopPropagation();
+        event.preventDefault(); event.stopPropagation();
         const unit = event.deltaMode === WheelEvent.DOM_DELTA_LINE ? 16 : event.deltaMode === WheelEvent.DOM_DELTA_PAGE ? element.clientHeight : 1;
         const pixelX = event.deltaX * unit;
         const pixelY = event.deltaY * unit;
-        const mouseWheel = event.deltaMode !== WheelEvent.DOM_DELTA_PIXEL || (Math.abs(pixelX) < 1 && Math.abs(pixelY) >= 40);
-        if (event.ctrlKey || mouseWheel) {
+        const looksLikeMouseWheel = event.deltaMode !== WheelEvent.DOM_DELTA_PIXEL || (Math.abs(pixelX) < 1 && Math.abs(pixelY) >= 40);
+        if (event.ctrlKey || looksLikeMouseWheel) {
           zoomDelta += pixelY;
           zoomPoint = map.mouseEventToContainerPoint(event);
           if (frame === null) frame = requestAnimationFrame(applyZoom);
@@ -131,16 +377,10 @@ export function MapWorkspace({
         }
       };
       element.addEventListener("wheel", handleWheel, { passive: false });
+      removeWheel = () => element.removeEventListener("wheel", handleWheel);
       setReady(true);
-      return () => element.removeEventListener("wheel", handleWheel);
     });
-
-    return () => {
-      cancelled = true;
-      mapRef.current?.remove();
-      mapRef.current = null;
-      layersRef.current = null;
-    };
+    return () => { cancelled = true; removeWheel?.(); mapRef.current?.remove(); mapRef.current = null; layersRef.current = null; };
   }, [attribution, center, initialZoom, maxZoom, minZoom, tileUrl]);
 
   useEffect(() => {
@@ -155,26 +395,15 @@ export function MapWorkspace({
       const editable = new Set(editableFeatureIds);
       for (const feature of features) {
         const selected = feature.properties.id === selectedId;
-        const layer = L.geoJSON(feature, {
-          style: () => callbacksRef.current.pathOptions(feature, selected),
-          pointToLayer: (_point, latlng) => L.circleMarker(latlng, callbacksRef.current.pathOptions(feature, selected)),
-        });
+        const options = callbacksRef.current.pathOptions(feature, selected);
+        const layer = L.geoJSON(feature, { style: () => options, pointToLayer: (_point, latlng) => L.circleMarker(latlng, options) });
         layer.bindTooltip(feature.properties.label, { sticky: true });
         layer.on("click", () => callbacksRef.current.onSelect(feature.properties.id));
         layer.addTo(group);
-
         if (editable.has(feature.properties.id) && feature.geometry.type === "Polygon") {
           feature.geometry.coordinates[0]?.slice(0, -1).forEach(([lng, lat], index) => {
-            const marker = L.marker([lat, lng], {
-              draggable: true,
-              keyboard: true,
-              title: `Flytt punkt ${index + 1} i ${feature.properties.label}`,
-              icon: L.divIcon({ className: "map-workspace__edit-handle", html: "<span></span>", iconSize: [20, 20], iconAnchor: [10, 10] }),
-            });
-            marker.on("dragend", () => {
-              const point = marker.getLatLng();
-              callbacksRef.current.onVertexMove?.(feature.properties.editId ?? feature.properties.id, index, [point.lng, point.lat]);
-            });
+            const marker = L.marker([lat, lng], { draggable: true, keyboard: true, title: `Move point ${index + 1} in ${feature.properties.label}`, icon: L.divIcon({ className: "map-explorer__edit-handle", html: "<span></span>", iconSize: [20, 20], iconAnchor: [10, 10] }) });
+            marker.on("dragend", () => { const point = marker.getLatLng(); callbacksRef.current.onVertexMove?.(feature.properties.editId ?? feature.properties.id, index, [point.lng, point.lat]); });
             marker.addTo(group);
           });
         }
@@ -186,8 +415,10 @@ export function MapWorkspace({
       }
       if (selectedId && selectedId !== previousSelectionRef.current) {
         const selected = features.filter((feature) => feature.properties.id === selectedId);
-        const selectedBounds = L.geoJSON(collection(selected)).getBounds();
-        if (selectedBounds.isValid()) map.fitBounds(selectedBounds, { padding: [48, 48], maxZoom: maxFitZoom });
+        if (selected.length) {
+          const selectedBounds = L.geoJSON(collection(selected)).getBounds();
+          if (selectedBounds.isValid()) map.fitBounds(selectedBounds, { padding: [48, 48], maxZoom: maxFitZoom });
+        }
         previousSelectionRef.current = selectedId;
       }
       callbacksRef.current.onViewportChange?.(features.filter((feature) => map.getBounds().intersects(L.geoJSON(feature).getBounds())).map((feature) => feature.properties.id));
@@ -198,12 +429,7 @@ export function MapWorkspace({
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !onViewportChange) return;
-    const report = () => {
-      void import("leaflet").then(({ default: L }) => {
-        const ids = features.filter((feature) => map.getBounds().intersects(L.geoJSON(feature).getBounds())).map((feature) => feature.properties.id);
-        callbacksRef.current.onViewportChange?.(ids);
-      });
-    };
+    const report = () => void import("leaflet").then(({ default: L }) => callbacksRef.current.onViewportChange?.(features.filter((feature) => map.getBounds().intersects(L.geoJSON(feature).getBounds())).map((feature) => feature.properties.id)));
     map.on("moveend zoomend", report);
     return () => { map.off("moveend zoomend", report); };
   }, [features, onViewportChange, ready]);
@@ -213,7 +439,6 @@ export function MapWorkspace({
     document.addEventListener("fullscreenchange", listener);
     return () => document.removeEventListener("fullscreenchange", listener);
   }, []);
-
   useEffect(() => {
     if (!fallbackFullscreen) return;
     const previous = document.body.style.overflow;
@@ -222,31 +447,29 @@ export function MapWorkspace({
     window.addEventListener("keydown", escape);
     return () => { document.body.style.overflow = previous; window.removeEventListener("keydown", escape); };
   }, [fallbackFullscreen]);
-
-  useEffect(() => {
-    window.setTimeout(() => mapRef.current?.invalidateSize(), 80);
-  }, [fullscreen]);
+  useEffect(() => { window.setTimeout(() => mapRef.current?.invalidateSize(), 80); }, [fullscreen]);
 
   const toggleFullscreen = useCallback(async () => {
     if (document.fullscreenElement) return document.exitFullscreen();
     if (fallbackFullscreen) { setFallbackFullscreen(false); return; }
     try { await surfaceRef.current?.requestFullscreen(); } catch { setFallbackFullscreen(true); }
   }, [fallbackFullscreen]);
-  const actions = useMemo<MapWorkspaceControlActions>(() => ({
-    fullscreen,
-    toggleFullscreen,
-    zoomIn: () => mapRef.current?.zoomIn(),
-    zoomOut: () => mapRef.current?.zoomOut(),
-  }), [fullscreen, toggleFullscreen]);
+  const actions = useMemo<MapCanvasActions>(() => ({ fullscreen, toggleFullscreen, zoomIn: () => mapRef.current?.zoomIn(), zoomOut: () => mapRef.current?.zoomOut() }), [fullscreen, toggleFullscreen]);
 
   return (
-    <div ref={surfaceRef} className={`map-workspace ${fullscreen ? "map-workspace--fullscreen" : ""} ${className ?? ""}`}>
+    <div ref={surfaceRef} className={`map-explorer__surface ${fullscreen ? "map-explorer__surface--fullscreen" : ""} ${className ?? ""}`}>
       {topOverlay}
-      <div className={`map-workspace__frame ${frameClassName ?? ""}`}>
-        <div ref={mapElementRef} className="map-workspace__canvas" aria-label={ariaLabel} />
+      <div className={`map-explorer__frame ${frameClassName ?? ""}`}>
+        <div ref={mapElementRef} className="map-explorer__canvas" role="application" aria-label={ariaLabel} tabIndex={0} />
         {selectedOverlay}
         {renderControls?.(actions)}
       </div>
     </div>
   );
 }
+
+/** @deprecated Use MapCanvas for the low-level map primitive. */
+export const MapWorkspace = MapCanvas;
+export type MapWorkspaceFeature = MapExplorerFeature;
+export type MapWorkspaceProps = MapCanvasProps;
+export type MapWorkspaceControlActions = MapCanvasActions;

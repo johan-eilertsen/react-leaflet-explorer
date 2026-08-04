@@ -1,41 +1,30 @@
 # Architecture
 
-## Boundary
+## Product boundary
 
-`MapWorkspace` is the smallest stable shared boundary between the public
-Hysvær map and Nordøy's authenticated editor. It owns:
+`MapExplorer` is the stable public surface. It owns the repeated interaction
+contract that applications should not reimplement:
 
-- Leaflet setup and Kartverket tile integration
-- mouse, wheel, trackpad, pinch, and direct-touch input
-- geometry layers, selection fitting, and viewport reports
-- fullscreen and zoom actions
-- optional draggable polygon vertex handles
+- accessible search, type filter and reset
+- geometry rendering and selected-place state
+- selected-place overlay, fullscreen and zoom controls inside the map frame
+- mouse-wheel zoom, two-axis trackpad pan, ctrl-pinch zoom and direct touch
+- keyboard and focus behavior
+- responsive defaults and semantic CSS-variable theming
+- optional polygon vertex handles
 
-Applications own:
+Applications own data fetching, domain models, tile-provider credentials,
+mutations, history and destructive-action safeguards. Product-specific content
+can be supplied through `renderSelected` and `selectedActions`.
 
-- database/API adapters and domain object types
-- search/filter controls and finished product copy
-- selected-place content
-- shadcn primitives used to render controls
-- semantic CSS token values
-- mutations, history, and destructive-action safeguards
-
-The package only refers to semantic names such as `--background`,
-`--border`, `--primary`, `--accent`, and `--card`. Hysvær and Nordøy provide
-different values for the same contract.
+Base UI provides the accessible combobox behavior. Leaflet provides geographic
+rendering. There are no Radix, cmdk, shadcn or Tailwind runtime dependencies.
+The default stylesheet is complete and can be themed without replacing the
+component.
 
 ## Distribution
 
-The durable release model is a versioned npm package consumed by both apps.
-Local integration is verified with `npm pack`; tarballs are not committed.
-A release is complete only when:
-
-1. admin publishes an exact package version from an exact package SHA
-2. both app lockfiles resolve that registry release
-3. each app is built, deployed, and live-tested at an exact app SHA
-
-Git submodules were rejected because private Vercel checkouts need additional
-Git credentials. Git subtrees and copied source were rejected because fixes
-would not automatically have one source of truth. Runtime-loading a remote
-bundle was rejected because it couples availability and React execution
-between otherwise independent sites.
+The durable release model is a versioned npm package. Local integration uses
+`npm pack`; generated tarballs stay outside git. A release is complete only
+when the exact package version is published from a verified package SHA and
+consuming applications pass their own build and rendered QA.

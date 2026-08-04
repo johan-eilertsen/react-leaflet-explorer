@@ -1,17 +1,20 @@
 {
-  "name": "hysvaer-map-workspace",
+  "name": "react-leaflet-explorer",
   "version": "0.1.0",
-  "description": "Shared accessible Leaflet workspace for Hysvær map products",
+  "description": "An opinionated, accessible React map explorer with search, filters, trackpad and touch support",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/johan-eilertsen/hysvaer-map-workspace.git"
+    "url": "git+https://github.com/johan-eilertsen/react-leaflet-explorer.git"
   },
-  "homepage": "https://github.com/johan-eilertsen/hysvaer-map-workspace#readme",
+  "homepage": "https://github.com/johan-eilertsen/react-leaflet-explorer#readme",
   "bugs": {
-    "url": "https://github.com/johan-eilertsen/hysvaer-map-workspace/issues"
+    "url": "https://github.com/johan-eilertsen/react-leaflet-explorer/issues"
   },
   "type": "module",
+  "sideEffects": [
+    "*.css"
+  ],
   "files": [
     "dist"
   ],
@@ -23,13 +26,15 @@
     "./styles.css": "./dist/styles.css"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json && cp src/styles.css dist/styles.css",
-    "pack:local": "npm run build && npm pack --pack-destination ./artifacts"
+    "build": "rm -rf dist && tsc -p tsconfig.json && cp src/styles.css dist/styles.css",
+    "test": "vitest run src",
+    "check": "npm run test && npm run build",
+    "pack:local": "npm run check && mkdir -p artifacts && npm pack --pack-destination ./artifacts"
   },
   "peerDependencies": {
     "leaflet": "^1.9.4",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react": "^18.0.0 || ^19.0.0",
+    "react-dom": "^18.0.0 || ^19.0.0"
   },
   "devDependencies": {
     "@types/leaflet": "^1.9.21",
@@ -37,6 +42,11 @@
     "leaflet": "^1.9.4",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "typescript": "^5.9.0"
+    "typescript": "^5.9.0",
+    "vitest": "^4.1.10"
+  },
+  "dependencies": {
+    "@base-ui/react": "^1.7.0",
+    "@types/geojson": "^7946.0.16"
   }
 }
