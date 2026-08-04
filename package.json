@@ -1,0 +1,42 @@
+{
+  "name": "hysvaer-map-workspace",
+  "version": "0.1.0",
+  "description": "Shared accessible Leaflet workspace for Hysvær map products",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/johan-eilertsen/hysvaer-map-workspace.git"
+  },
+  "homepage": "https://github.com/johan-eilertsen/hysvaer-map-workspace#readme",
+  "bugs": {
+    "url": "https://github.com/johan-eilertsen/hysvaer-map-workspace/issues"
+  },
+  "type": "module",
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./styles.css": "./dist/styles.css"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && cp src/styles.css dist/styles.css",
+    "pack:local": "npm run build && npm pack --pack-destination ./artifacts"
+  },
+  "peerDependencies": {
+    "leaflet": "^1.9.4",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/leaflet": "^1.9.21",
+    "@types/react": "^19.0.0",
+    "leaflet": "^1.9.4",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "typescript": "^5.9.0"
+  }
+}
