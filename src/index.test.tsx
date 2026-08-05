@@ -33,7 +33,8 @@ describe("MapExplorer", () => {
     const markup = renderToStaticMarkup(
       <MapExplorer features={features} defaultSelectedId="one" ariaLabel="Test map" />,
     );
-    expect(markup).toContain("Search by name");
+    expect(markup).toContain('placeholder=""');
+    expect(markup).toContain("map-explorer__selected-value");
     expect(markup).toContain("Reset filters");
     expect(markup).toContain("Open map in fullscreen");
     expect(markup).toContain("Zoom in");

@@ -2,7 +2,7 @@
 
 import { Combobox } from "@base-ui/react/combobox";
 import type { Feature, FeatureCollection, Geometry } from "geojson";
-import type { LayerGroup, Map as LeafletMap, PathOptions } from "leaflet";
+import type { LayerGroup, Map as LeafletMap, PathOptions, Tooltip } from "leaflet";
 import {
   useCallback,
   useEffect,
@@ -41,6 +41,7 @@ export type MapExplorerLabels = {
   zoomIn: string;
   zoomOut: string;
   selectedPlace: string;
+  results: string;
 };
 
 export type MapExplorerRenderSelected = (
@@ -119,6 +120,7 @@ const defaultLabels: MapExplorerLabels = {
   zoomIn: "Zoom in",
   zoomOut: "Zoom out",
   selectedPlace: "Selected place",
+  results: "results",
 };
 
 const defaultCenter: [number, number] = [65.762, 11.723];
@@ -231,7 +233,7 @@ function ExplorerCombobox({
           <div className="map-explorer__input-slot">
             <Combobox.Input
               aria-label={labels.search}
-              placeholder={labels.searchPlaceholder}
+              placeholder={selected && !query ? "" : labels.searchPlaceholder}
             />
             {selected && !query ? (
               <span className="map-explorer__selected-value" aria-hidden="true">
@@ -258,7 +260,7 @@ function ExplorerCombobox({
         </div>
       </div>
       <Combobox.Portal container={containerRef}>
-        <Combobox.Positioner sideOffset={6} className="map-explorer__positioner">
+        <Combobox.Positioner anchor={containerRef} sideOffset={6} className="map-explorer__positioner">
           <Combobox.Popup className="map-explorer__popup map-explorer__search-popup">
             <div className="map-explorer__filters" aria-label={labels.filter}>
               {typeOptions.map((option) => (
@@ -333,6 +335,7 @@ export function MapExplorer({
   const selectedId = controlledSelectedId === undefined ? internalSelectedId : controlledSelectedId;
   const [query, setQuery] = useState("");
   const [type, setType] = useState("all");
+  const [viewportIds, setViewportIds] = useState<string[] | null>(null);
   const typeOptions = useMemo(() => {
     if (filters) return [{ value: "all", label: labels.allTypes }, ...filters.filter((item) => item.value !== "all")];
     const types = new Map<string, string>();
@@ -348,6 +351,12 @@ export function MapExplorer({
     return [...places.values()];
   }, [visibleFeatures]);
   const selected = features.find((feature) => feature.properties.id === selectedId) ?? null;
+  const hasActiveFilter = query.length > 0 || type !== "all";
+  const resultCount = viewportIds?.length ?? new Set(visibleFeatures.map((feature) => feature.properties.id)).size;
+  const handleViewportChange = useCallback((ids: string[]) => {
+    setViewportIds(ids);
+    onViewportChange?.(ids);
+  }, [onViewportChange]);
   const setSelected = useCallback((id: string | null) => {
     if (controlledSelectedId === undefined) setInternalSelectedId(id);
     onSelect?.(id);
@@ -364,7 +373,7 @@ export function MapExplorer({
         features={visibleFeatures}
         selectedId={selectedId}
         onSelect={setSelected}
-        onViewportChange={onViewportChange}
+        onViewportChange={handleViewportChange}
         onVertexMove={onVertexMove}
         editableFeatureIds={editableFeatureIds}
         pathOptions={pathOptions}
@@ -393,6 +402,11 @@ export function MapExplorer({
                 onReset={reset}
                 labels={labels}
               />
+              {hasActiveFilter ? (
+                <span className="map-explorer__result-count" aria-live="polite">
+                  {resultCount} {labels.results}
+                </span>
+              ) : null}
             </div>
             {visiblePlaces.length === 0 ? <p className="map-explorer__status" role="status">{labels.noResults}</p> : null}
           </div>
@@ -528,18 +542,41 @@ export function MapCanvas({
   useEffect(() => {
     if (!ready || !mapRef.current || !layersRef.current) return;
     let cancelled = false;
+    let hoverTooltip: Tooltip | null = null;
+    let closeTooltipTimer: ReturnType<typeof setTimeout> | null = null;
     void import("leaflet").then((module) => {
       const L = module.default;
       const map = mapRef.current;
       const group = layersRef.current;
       if (cancelled || !map || !group) return;
       group.clearLayers();
+      hoverTooltip = L.tooltip({
+        className: "map-explorer__hover-tooltip",
+        direction: "top",
+        offset: [0, -8],
+        opacity: 1,
+      });
       const editable = new Set(editableFeatureIds);
       for (const feature of features) {
         const selected = feature.properties.id === selectedId;
         const options = callbacksRef.current.pathOptions(feature, selected);
         const layer = L.geoJSON(feature, { style: () => options, pointToLayer: (_point, latlng) => L.circleMarker(latlng, options) });
-        layer.bindTooltip(feature.properties.label, { sticky: true });
+        layer.on("mouseover", (event) => {
+          if (!hoverTooltip) return;
+          if (closeTooltipTimer) clearTimeout(closeTooltipTimer);
+          hoverTooltip.setContent(feature.properties.label).setLatLng(event.latlng);
+          if (!map.hasLayer(hoverTooltip)) hoverTooltip.addTo(map);
+          requestAnimationFrame(() => hoverTooltip?.getElement()?.classList.add("map-explorer__hover-tooltip--visible"));
+        });
+        layer.on("mousemove", (event) => hoverTooltip?.setLatLng(event.latlng));
+        layer.on("mouseout", () => {
+          const tooltip = hoverTooltip;
+          if (!tooltip) return;
+          tooltip.getElement()?.classList.remove("map-explorer__hover-tooltip--visible");
+          closeTooltipTimer = setTimeout(() => {
+            if (map.hasLayer(tooltip)) map.removeLayer(tooltip);
+          }, 90);
+        });
         layer.on("click", () => callbacksRef.current.onSelect(feature.properties.id));
         layer.addTo(group);
         const mapLabel = callbacksRef.current.mapLabel?.(feature)?.trim();
@@ -581,15 +618,19 @@ export function MapCanvas({
         }
         previousSelectionRef.current = selectedId;
       }
-      callbacksRef.current.onViewportChange?.(features.filter((feature) => map.getBounds().intersects(L.geoJSON(feature).getBounds())).map((feature) => feature.properties.id));
+      callbacksRef.current.onViewportChange?.([...new Set(features.filter((feature) => map.getBounds().intersects(L.geoJSON(feature).getBounds())).map((feature) => feature.properties.id))]);
     });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      if (closeTooltipTimer) clearTimeout(closeTooltipTimer);
+      if (hoverTooltip && mapRef.current?.hasLayer(hoverTooltip)) mapRef.current.removeLayer(hoverTooltip);
+    };
   }, [bounds, editableFeatureIds, features, maxFitZoom, ready, selectedId]);
 
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !onViewportChange) return;
-    const report = () => void import("leaflet").then(({ default: L }) => callbacksRef.current.onViewportChange?.(features.filter((feature) => map.getBounds().intersects(L.geoJSON(feature).getBounds())).map((feature) => feature.properties.id)));
+    const report = () => void import("leaflet").then(({ default: L }) => callbacksRef.current.onViewportChange?.([...new Set(features.filter((feature) => map.getBounds().intersects(L.geoJSON(feature).getBounds())).map((feature) => feature.properties.id))]));
     map.on("moveend zoomend", report);
     return () => { map.off("moveend zoomend", report); };
   }, [features, onViewportChange, ready]);

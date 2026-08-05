@@ -63,6 +63,9 @@ combobox: type choices sit above the place suggestions, and the reset button
 clears the query, active type and selected place. A selected place is shown in
 the field when the visitor is not typing. Selecting a feature preserves the
 current zoom; the map only pans when the feature is outside the viewport.
+When a query or type filter is active, the explorer shows the deduplicated
+result count for the current viewport. Hover labels reuse one tooltip so only
+the feature under the pointer is announced visually.
 
 ## Selection and custom content
 
