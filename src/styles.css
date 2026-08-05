@@ -37,7 +37,7 @@
 .map-explorer__reset:focus-visible, .map-explorer__filter-option:focus-visible, .map-explorer__map-button:focus-visible, .map-explorer__zoom button:focus-visible, .map-explorer__selected-close:focus-visible { outline: 2px solid var(--map-explorer-ring); outline-offset: 2px; }
 .map-explorer__positioner { z-index: 4000; margin-left: 1.45rem; }
 .map-explorer__popup { min-width: var(--anchor-width); max-height: min(20rem, var(--available-height)); overflow: hidden; border: 1px solid var(--map-explorer-border); border-radius: var(--map-explorer-radius); background: var(--map-explorer-surface); color: var(--map-explorer-foreground); box-shadow: 0 10px 30px rgb(0 0 0 / .12); }
-.map-explorer__search-popup { min-width: max(calc(var(--anchor-width) - 1.45rem), 16rem); }
+.map-explorer__search-popup { min-width: max(calc(var(--anchor-width) - 1.45rem), 16rem); transform: translateX(-.72rem); }
 .map-explorer__filters { display: flex; flex-wrap: wrap; gap: .25rem; padding: .4rem .4rem .4rem .3rem; border-bottom: 1px solid var(--map-explorer-border); }
 .map-explorer__filter-option { min-height: 2rem; padding-inline: .65rem; border: 0; border-radius: calc(var(--map-explorer-radius) - 2px); background: transparent; color: var(--map-explorer-foreground); cursor: pointer; font-size: .875rem; }
 .map-explorer__filter-option:hover { background: var(--map-explorer-accent); color: var(--map-explorer-accent-foreground); }
