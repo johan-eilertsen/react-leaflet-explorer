@@ -1,6 +1,6 @@
 # 004 — Animer kartets UI-lag uten å sinke kartet
 
-- **Status**: READY_FOR_QC
+- **Status**: DONE
 - **Commit**: aeb6a01
 - **Severity**: LOW
 - **Category**: Physicality / missed opportunities
@@ -65,3 +65,10 @@ UI-tilstandene trenger korte overganger for romlig sammenheng og feedback.
   skal retargete uten restart. Kontroller fysisk Mac-trackpad uendret.
 - **Done when**: Lagene føles sammenhengende, mens direkte kartgestikk og native
   fullskjerm er like umiddelbare som før.
+
+## Result
+
+Implementert i `0.1.11`. Staging bekrefter popupens 180 ms ease-out fra Base UI
+transform-origin, eksplisitte geometri- og kontrolloverganger, og umiddelbar
+direkte kartgestikk. Presence-livssyklusen har regresjonstest mot restart ved
+vanlige React-renders.

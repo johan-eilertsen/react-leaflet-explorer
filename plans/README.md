@@ -4,10 +4,10 @@ Auditgrunnlag: Emil Kowalskis `improve-animations`, commit `aeb6a01`.
 
 | Plan | Tittel | Grad | Status |
 |---|---|---|---|
-| 001 | Panorer rolig til valg utenfor kartutsnittet | Medium | READY_FOR_QC |
-| 002 | Gjør tooltip-faden stabil og avbrytbar | Medium | READY_FOR_QC |
-| 003 | Samle motion-tokens og bevar nyttig feedback | Medium | READY_FOR_QC |
-| 004 | Animer kartets UI-lag uten å sinke kartet | Lav | READY_FOR_QC |
+| 001 | Panorer rolig til valg utenfor kartutsnittet | Medium | DONE |
+| 002 | Gjør tooltip-faden stabil og avbrytbar | Medium | DONE |
+| 003 | Samle motion-tokens og bevar nyttig feedback | Medium | DONE |
+| 004 | Animer kartets UI-lag uten å sinke kartet | Lav | DONE |
 
 ## Rekkefølge
 

@@ -1,6 +1,6 @@
 # 002 — Gjør tooltip-faden stabil og avbrytbar
 
-- **Status**: READY_FOR_QC
+- **Status**: DONE
 - **Commit**: aeb6a01
 - **Severity**: MEDIUM
 - **Category**: Easing & duration / interruptibility
@@ -66,3 +66,8 @@ ny faktisk hover. Tooltipen skal fortsatt gjenbrukes slik at bare én finnes.
   tooltip vises, den følger faktisk hover, og den fader raskt uten blinking.
 - **Done when**: Ingen gammel timer kan fjerne en ny tooltip, og inn/ut-fade er
   150 ms.
+
+## Result
+
+Implementert i `0.1.11`. Staging viser én synlig tooltip ved rask veksling,
+med 150 ms og `cubic-bezier(0.23, 1, 0.32, 1)`.

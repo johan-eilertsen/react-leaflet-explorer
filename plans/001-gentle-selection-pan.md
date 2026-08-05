@@ -1,6 +1,6 @@
 # 001 — Panorer rolig til valg utenfor kartutsnittet
 
-- **Status**: READY_FOR_QC
+- **Status**: DONE
 - **Commit**: aeb6a01
 - **Severity**: MEDIUM
 - **Category**: Purpose & frequency / easing & duration
@@ -65,3 +65,9 @@ skjærer kartutsnittet.
   to forskjellige objekter: bevegelsen retargeter uten hopp.
 - **Done when**: Bare programstyrt valg utenfor viewport animeres, og zoom er
   uendret før og etter.
+
+## Result
+
+Implementert i `0.1.11`. Direkte wheel-pan er rendret verifisert som umiddelbar
+og blokkerer fortsatt dokumentscroll. Programstyrt valg bruker den avbrytbare
+200 ms-kontrakten uten zoomendring.

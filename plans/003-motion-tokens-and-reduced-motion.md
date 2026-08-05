@@ -1,6 +1,6 @@
 # 003 — Samle motion-tokens og bevar nyttig feedback
 
-- **Status**: READY_FOR_QC
+- **Status**: DONE
 - **Commit**: aeb6a01
 - **Severity**: MEDIUM
 - **Category**: Accessibility / cohesion & tokens
@@ -66,3 +66,8 @@ setter alle transitions til nesten null.
   panel flytter/skalerer seg, men tooltip og fargefeedback er fortsatt lesbar.
 - **Done when**: Alle motion-verdier bruker tokens, og reduced motion reduserer
   bevegelse uten å fjerne forståelig feedback.
+
+## Result
+
+Implementert i `0.1.11`. Motion-kontrakten er dokumentert og reduced-motion
+fjerner romlig transform uten å slå av opacity- og fargefeedback.
