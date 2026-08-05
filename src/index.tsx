@@ -160,63 +160,32 @@ function Icon({ name }: { name: "search" | "chevron" | "expand" | "collapse" | "
   return <svg aria-hidden="true" viewBox="0 0 24 24" className="map-explorer__icon">{paths[name]}</svg>;
 }
 
-function FilterCombobox({
-  value,
-  onValueChange,
-  options,
-  label,
-}: {
-  value: string;
-  onValueChange: (value: string) => void;
-  options: MapExplorerFilter[];
-  label: string;
-}) {
-  const selected = options.find((option) => option.value === value) ?? options[0];
-  const containerRef = useRef<HTMLDivElement>(null);
-  return (
-    <Combobox.Root<MapExplorerFilter>
-      items={options}
-      value={selected}
-      onValueChange={(next) => next && onValueChange(next.value)}
-      itemToStringLabel={(item) => item.label}
-      isItemEqualToValue={(item, current) => item.value === current.value}
-    >
-      <div ref={containerRef} className="map-explorer__filter">
-        <Combobox.Input aria-label={label} className="map-explorer__filter-input" />
-        <Combobox.Trigger aria-label={label} className="map-explorer__filter-trigger"><Icon name="chevron" /></Combobox.Trigger>
-      </div>
-      <Combobox.Portal container={containerRef}>
-        <Combobox.Positioner sideOffset={6} className="map-explorer__positioner">
-          <Combobox.Popup className="map-explorer__popup">
-            <Combobox.Empty className="map-explorer__empty">No options</Combobox.Empty>
-            <Combobox.List className="map-explorer__list">
-              {options.map((option) => (
-                <Combobox.Item key={option.value} value={option} className="map-explorer__item">
-                  <span>{option.label}</span><Combobox.ItemIndicator aria-hidden="true">✓</Combobox.ItemIndicator>
-                </Combobox.Item>
-              ))}
-            </Combobox.List>
-          </Combobox.Popup>
-        </Combobox.Positioner>
-      </Combobox.Portal>
-    </Combobox.Root>
-  );
-}
-
-function PlaceCombobox({
+function ExplorerCombobox({
   features,
   query,
   onQueryChange,
   onSelect,
+  selectedId,
+  type,
+  typeOptions,
+  onTypeChange,
+  onReset,
   labels,
 }: {
   features: MapExplorerFeature[];
   query: string;
   onQueryChange: (value: string) => void;
   onSelect: (id: string) => void;
-  labels: Pick<MapExplorerLabels, "search" | "searchPlaceholder" | "noResults">;
+  selectedId: string | null;
+  type: string;
+  typeOptions: MapExplorerFilter[];
+  onTypeChange: (value: string) => void;
+  onReset: () => void;
+  labels: Pick<MapExplorerLabels, "search" | "searchPlaceholder" | "filter" | "reset" | "noResults">;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const activeType = typeOptions.find((option) => option.value === type) ?? typeOptions[0];
+  const hasActiveChoice = query.length > 0 || type !== "all" || selectedId !== null;
   return (
     <Combobox.Root<MapExplorerFeature>
       items={features}
@@ -238,10 +207,41 @@ function PlaceCombobox({
       <div ref={containerRef} className="map-explorer__search">
         <Icon name="search" />
         <Combobox.Input aria-label={labels.search} placeholder={labels.searchPlaceholder} />
+        <span className="map-explorer__active-filter">{activeType.label}</span>
+        {hasActiveChoice ? (
+          <button
+            type="button"
+            className="map-explorer__reset"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={(event) => {
+              event.stopPropagation();
+              onReset();
+            }}
+            aria-label={labels.reset}
+            title={labels.reset}
+          >
+            <Icon name="close" />
+          </button>
+        ) : null}
       </div>
       <Combobox.Portal container={containerRef}>
         <Combobox.Positioner sideOffset={6} className="map-explorer__positioner">
           <Combobox.Popup className="map-explorer__popup map-explorer__search-popup">
+            <div className="map-explorer__filters" aria-label={labels.filter}>
+              {typeOptions.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  className="map-explorer__filter-option"
+                  data-active={type === option.value ? "true" : undefined}
+                  aria-pressed={type === option.value}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => onTypeChange(option.value)}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
             <Combobox.Empty className="map-explorer__empty">{labels.noResults}</Combobox.Empty>
             <Combobox.List className="map-explorer__list">
               {features.map((feature) => (
@@ -313,8 +313,11 @@ export function MapExplorer({
     if (controlledSelectedId === undefined) setInternalSelectedId(id);
     onSelect?.(id);
   }, [controlledSelectedId, onSelect]);
-  const reset = () => { setQuery(""); setType("all"); };
-  const hasFilters = query.length > 0 || type !== "all";
+  const reset = () => { setQuery(""); setType("all"); setSelected(null); };
+  const changeType = (nextType: string) => {
+    setType(nextType);
+    if (selected && nextType !== "all" && selected.properties.type !== nextType) setSelected(null);
+  };
 
   return (
     <section className={`map-explorer ${className ?? ""}`} style={style} aria-label={ariaLabel}>
@@ -339,15 +342,18 @@ export function MapExplorer({
         topOverlay={(
           <div className="map-explorer__toolbar-region">
             <div className="map-explorer__toolbar">
-              <PlaceCombobox
+              <ExplorerCombobox
                 features={visiblePlaces}
                 query={query}
                 onQueryChange={setQuery}
                 onSelect={setSelected}
+                selectedId={selectedId}
+                type={type}
+                typeOptions={typeOptions}
+                onTypeChange={changeType}
+                onReset={reset}
                 labels={labels}
               />
-              <FilterCombobox value={type} onValueChange={setType} options={typeOptions} label={labels.filter} />
-              <button type="button" className="map-explorer__reset" onClick={reset} disabled={!hasFilters}>{labels.reset}</button>
             </div>
             {visiblePlaces.length === 0 ? <p className="map-explorer__status" role="status">{labels.noResults}</p> : null}
           </div>

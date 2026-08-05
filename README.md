@@ -58,7 +58,9 @@ type MapExplorerFeature = Feature<Geometry, {
 ```
 
 The explorer derives its type filter from the features. Pass `filters` to
-control filter order and labels.
+control filter order and labels. Search, type filters and reset share one
+combobox: type choices sit above the place suggestions, and the reset button
+clears the query, active type and selected place.
 
 ## Selection and custom content
 

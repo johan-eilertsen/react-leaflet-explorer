@@ -39,4 +39,20 @@ describe("MapExplorer", () => {
     expect(markup).toContain("Zoom in");
     expect(markup).toContain("Myrøya");
   });
+
+  it("uses one integrated combobox for search, filters and reset", () => {
+    const markup = renderToStaticMarkup(
+      <MapExplorer
+        features={features}
+        filters={[
+          { value: "island", label: "Islands" },
+          { value: "building", label: "Buildings" },
+        ]}
+        defaultSelectedId="one"
+      />,
+    );
+
+    expect(markup.match(/role="combobox"/g) ?? []).toHaveLength(1);
+    expect(markup).toContain('aria-label="Reset filters"');
+  });
 });
