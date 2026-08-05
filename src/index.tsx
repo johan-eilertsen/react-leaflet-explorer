@@ -1,8 +1,8 @@
 "use client";
 
 import { Combobox } from "@base-ui/react/combobox";
-import type { Feature, FeatureCollection, Geometry } from "geojson";
-import type { LayerGroup, Map as LeafletMap, PathOptions, Tooltip } from "leaflet";
+import type { Feature, Geometry } from "geojson";
+import type { GeoJSON as LeafletGeoJSON, LatLngBounds, Map as LeafletMap, Marker, PathOptions, Tooltip } from "leaflet";
 import {
   useCallback,
   useEffect,
@@ -20,6 +20,7 @@ import {
   selectedOverlayDurationMs,
   selectionPanOptions,
 } from "./motion.js";
+import { buildMapSearchIndex, collectVisibleFeatureIds, filterMapSearchIndex, reconcileMapEntries, sameMapFeatureIds, updateSelectedEntries } from "./internals.js";
 
 export type MapExplorerFeature = Feature<Geometry, {
   id: string;
@@ -116,6 +117,14 @@ export type MapCanvasProps = {
   renderControls?: (actions: MapCanvasActions) => ReactNode;
 };
 
+type FeatureLayerEntry = {
+  feature: MapExplorerFeature;
+  layer: LeafletGeoJSON;
+  bounds: LatLngBounds;
+  label: Tooltip | null;
+  editMarkers: Marker[];
+};
+
 const defaultLabels: MapExplorerLabels = {
   search: "Search places",
   searchPlaceholder: "Search by name",
@@ -131,26 +140,8 @@ const defaultLabels: MapExplorerLabels = {
   results: "results",
 };
 
-const defaultCenter: [number, number] = [65.762, 11.723];
+const defaultCenter: [number, number] = [0, 0];
 const noEditableFeatureIds: string[] = [];
-
-export function sameMapFeatureIds(current: string[] | null, next: string[]) {
-  return current !== null && current.length === next.length && current.every((id, index) => id === next[index]);
-}
-
-export function filterMapFeatures(features: MapExplorerFeature[], query: string, type = "all") {
-  const needle = query.trim().toLocaleLowerCase();
-  return features.filter((feature) => {
-    if (type !== "all" && feature.properties.type !== type) return false;
-    if (!needle) return true;
-    const haystack = `${feature.properties.label} ${feature.properties.typeLabel ?? feature.properties.type} ${feature.properties.searchText ?? ""}`.toLocaleLowerCase();
-    return haystack.includes(needle);
-  });
-}
-
-function collection(features: MapExplorerFeature[]): FeatureCollection {
-  return { type: "FeatureCollection", features };
-}
 
 function defaultPathOptions(_feature: MapExplorerFeature, selected: boolean): PathOptions {
   return {
@@ -162,10 +153,9 @@ function defaultPathOptions(_feature: MapExplorerFeature, selected: boolean): Pa
   };
 }
 
-function Icon({ name }: { name: "search" | "chevron" | "expand" | "collapse" | "plus" | "minus" | "close" }) {
+function Icon({ name }: { name: "search" | "expand" | "collapse" | "plus" | "minus" | "close" }) {
   const paths = {
     search: <><circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" /></>,
-    chevron: <path d="m7 10 5 5 5-5" />,
     expand: <><path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5" /></>,
     collapse: <><path d="M9 3v6H3M15 3v6h6M9 21v-6H3M15 21v-6h6" /></>,
     plus: <path d="M12 5v14M5 12h14" />,
@@ -421,16 +411,16 @@ export function MapExplorer({
     for (const feature of features) types.set(feature.properties.type, feature.properties.typeLabel ?? feature.properties.type);
     return [{ value: "all", label: labels.allTypes }, ...[...types].map(([value, label]) => ({ value, label }))];
   }, [features, filters, labels.allTypes]);
-  const visibleFeatures = useMemo(() => filterMapFeatures(features, query, type), [features, query, type]);
-  const visiblePlaces = useMemo(() => {
-    const places = new Map<string, MapExplorerFeature>();
-    for (const feature of visibleFeatures) {
-      if (!places.has(feature.properties.id)) places.set(feature.properties.id, feature);
-    }
-    return [...places.values()];
-  }, [visibleFeatures]);
+  const searchIndex = useMemo(() => buildMapSearchIndex(features), [features]);
+  const visibleRecords = useMemo(() => filterMapSearchIndex(searchIndex, query, type), [query, searchIndex, type]);
+  const visibleIds = useMemo(() => new Set(visibleRecords.map((record) => record.id)), [visibleRecords]);
+  const visibleFeatures = useMemo(
+    () => features.filter((feature) => visibleIds.has(feature.properties.id)),
+    [features, visibleIds],
+  );
+  const visiblePlaces = useMemo(() => visibleRecords.map((record) => record.representative), [visibleRecords]);
   const selected = features.find((feature) => feature.properties.id === selectedId) ?? null;
-  const resultCount = viewportIds?.length ?? new Set(visibleFeatures.map((feature) => feature.properties.id)).size;
+  const resultCount = viewportIds?.length ?? visibleRecords.length;
   const handleViewportChange = useCallback((ids: string[]) => {
     if (sameMapFeatureIds(viewportIdsRef.current, ids)) return;
     viewportIdsRef.current = ids;
@@ -541,7 +531,19 @@ export function MapCanvas({
   const surfaceRef = useRef<HTMLDivElement>(null);
   const mapElementRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<LeafletMap | null>(null);
-  const layersRef = useRef<LayerGroup | null>(null);
+  const leafletRef = useRef<typeof import("leaflet") | null>(null);
+  const featureLayersRef = useRef(new Map<MapExplorerFeature, FeatureLayerEntry>());
+  const currentFeaturesRef = useRef(features);
+  const hoverTooltipRef = useRef<Tooltip | null>(null);
+  const hoveredFeatureRef = useRef<MapExplorerFeature | null>(null);
+  const closeTooltipTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const tooltipFrameRef = useRef<number | null>(null);
+  const viewportIdsRef = useRef<string[] | null>(null);
+  const invalidateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const labelRendererRef = useRef(mapLabel);
+  const selectedIdRef = useRef(selectedId);
+  const styledSelectionRef = useRef<string | null>(null);
+  const pathOptionsRef = useRef(pathOptions);
   const fittedRef = useRef(false);
   const previousSelectionRef = useRef<string | null>(null);
   const callbacksRef = useRef({ onSelect, onViewportChange, onVertexMove, pathOptions, mapLabel });
@@ -549,7 +551,12 @@ export function MapCanvas({
   const [nativeFullscreen, setNativeFullscreen] = useState(false);
   const [fallbackFullscreen, setFallbackFullscreen] = useState(false);
   callbacksRef.current = { onSelect, onViewportChange, onVertexMove, pathOptions, mapLabel };
+  currentFeaturesRef.current = features;
+  selectedIdRef.current = selectedId;
   const fullscreen = nativeFullscreen || fallbackFullscreen;
+  const reportsViewport = onViewportChange !== undefined;
+  const editableFeatureSignature = [...new Set(editableFeatureIds)].sort().join("\u0000");
+  const boundsSignature = bounds ? JSON.stringify(bounds) : "";
   const centerLatitude = center[0];
   const centerLongitude = center[1];
 
@@ -559,6 +566,7 @@ export function MapCanvas({
     let frame: number | null = null;
     const element = mapElementRef.current;
     if (!element || mapRef.current) return;
+    setReady(false);
     void import("leaflet").then((module) => {
       if (cancelled || !mapElementRef.current) return;
       const L = module.default;
@@ -579,8 +587,14 @@ export function MapCanvas({
         markerZoomAnimation: false,
       });
       mapRef.current = map;
+      leafletRef.current = L;
       L.tileLayer(tileUrl, { attribution, maxZoom }).addTo(map);
-      layersRef.current = L.layerGroup().addTo(map);
+      hoverTooltipRef.current = L.tooltip({
+        className: "map-explorer__hover-tooltip",
+        direction: "top",
+        offset: [0, -8],
+        opacity: 1,
+      });
       let zoomDelta = 0;
       let zoomPoint = L.point(0, 0);
       const applyZoom = () => {
@@ -610,110 +624,182 @@ export function MapCanvas({
       cancelled = true;
       removeWheel?.();
       if (frame !== null) cancelAnimationFrame(frame);
+      closeTooltipTimerRef.current = cancelTooltipClose(closeTooltipTimerRef.current);
+      if (tooltipFrameRef.current !== null) cancelAnimationFrame(tooltipFrameRef.current);
+      tooltipFrameRef.current = null;
+      featureLayersRef.current.clear();
       mapRef.current?.stop();
       mapRef.current?.remove();
       mapRef.current = null;
-      layersRef.current = null;
+      leafletRef.current = null;
+      hoverTooltipRef.current = null;
+      hoveredFeatureRef.current = null;
+      fittedRef.current = false;
+      previousSelectionRef.current = null;
+      viewportIdsRef.current = null;
     };
   }, [attribution, centerLatitude, centerLongitude, initialZoom, maxZoom, minZoom, tileUrl]);
 
-  useEffect(() => {
-    if (!ready || !mapRef.current || !layersRef.current) return;
-    let cancelled = false;
-    let hoverTooltip: Tooltip | null = null;
-    let closeTooltipTimer: ReturnType<typeof setTimeout> | null = null;
-    void import("leaflet").then((module) => {
-      const L = module.default;
-      const map = mapRef.current;
-      const group = layersRef.current;
-      if (cancelled || !map || !group) return;
-      group.clearLayers();
-      hoverTooltip = L.tooltip({
-        className: "map-explorer__hover-tooltip",
-        direction: "top",
-        offset: [0, -8],
-        opacity: 1,
-      });
-      const editable = new Set(editableFeatureIds);
-      for (const feature of features) {
-        const selected = feature.properties.id === selectedId;
-        const options = callbacksRef.current.pathOptions(feature, selected);
-        const layer = L.geoJSON(feature, { style: () => options, pointToLayer: (_point, latlng) => L.circleMarker(latlng, options) });
-        layer.on("mouseover", (event) => {
-          if (!hoverTooltip) return;
-          closeTooltipTimer = cancelTooltipClose(closeTooltipTimer);
-          hoverTooltip.setContent(feature.properties.label).setLatLng(event.latlng);
-          if (!map.hasLayer(hoverTooltip)) hoverTooltip.addTo(map);
-          requestAnimationFrame(() => hoverTooltip?.getElement()?.classList.add("map-explorer__hover-tooltip--visible"));
-        });
-        layer.on("mousemove", (event) => hoverTooltip?.setLatLng(event.latlng));
-        layer.on("mouseout", () => {
-          const tooltip = hoverTooltip;
-          if (!tooltip) return;
-          tooltip.getElement()?.classList.remove("map-explorer__hover-tooltip--visible");
-          closeTooltipTimer = scheduleTooltipClose(() => {
-            if (map.hasLayer(tooltip)) map.removeLayer(tooltip);
-            closeTooltipTimer = null;
-          });
-        });
-        layer.on("click", () => callbacksRef.current.onSelect(feature.properties.id));
-        layer.addTo(group);
-        const mapLabel = callbacksRef.current.mapLabel?.(feature)?.trim();
-        if (mapLabel) {
-          const labelBounds = layer.getBounds();
-          if (labelBounds.isValid()) {
-            L.tooltip({
-              permanent: true,
-              direction: "center",
-              className: "map-explorer__feature-label",
-              interactive: false,
-              opacity: 1,
-            })
-              .setLatLng(labelBounds.getCenter())
-              .setContent(mapLabel)
-              .addTo(group);
-          }
-        }
-        if (editable.has(feature.properties.id) && feature.geometry.type === "Polygon") {
-          feature.geometry.coordinates[0]?.slice(0, -1).forEach(([lng, lat], index) => {
-            const marker = L.marker([lat, lng], { draggable: true, keyboard: true, title: `Move point ${index + 1} in ${feature.properties.label}`, icon: L.divIcon({ className: "map-explorer__edit-handle", html: "<span></span>", iconSize: [20, 20], iconAnchor: [10, 10] }) });
-            marker.on("dragend", () => { const point = marker.getLatLng(); callbacksRef.current.onVertexMove?.(feature.properties.editId ?? feature.properties.id, index, [point.lng, point.lat]); });
-            marker.addTo(group);
-          });
-        }
-      }
-      if (!fittedRef.current && features.length) {
-        const fitBounds = bounds ? L.latLngBounds(bounds) : L.geoJSON(collection(features)).getBounds();
-        if (fitBounds.isValid()) map.fitBounds(fitBounds, { animate: false, padding: [28, 28], maxZoom: maxFitZoom });
-        fittedRef.current = true;
-      }
-      if (selectedId && selectedId !== previousSelectionRef.current) {
-        const selected = features.filter((feature) => feature.properties.id === selectedId);
-        if (selected.length) {
-          const selectedBounds = L.geoJSON(collection(selected)).getBounds();
-          if (selectedBounds.isValid() && !map.getBounds().intersects(selectedBounds)) {
-            map.stop();
-            map.panTo(selectedBounds.getCenter(), selectionPanOptions);
-          }
-        }
-        previousSelectionRef.current = selectedId;
-      }
-      callbacksRef.current.onViewportChange?.([...new Set(features.filter((feature) => map.getBounds().intersects(L.geoJSON(feature).getBounds())).map((feature) => feature.properties.id))]);
+  const reportViewport = useCallback(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const mapBounds = map.getBounds();
+    const ids = collectVisibleFeatureIds(currentFeaturesRef.current, (feature) => {
+      const entry = featureLayersRef.current.get(feature);
+      return Boolean(entry?.bounds.isValid() && mapBounds.intersects(entry.bounds));
     });
-    return () => {
-      cancelled = true;
-      closeTooltipTimer = cancelTooltipClose(closeTooltipTimer);
-      if (hoverTooltip && mapRef.current?.hasLayer(hoverTooltip)) mapRef.current.removeLayer(hoverTooltip);
-    };
-  }, [bounds, editableFeatureIds, features, maxFitZoom, ready, selectedId]);
+    if (sameMapFeatureIds(viewportIdsRef.current, ids)) return;
+    viewportIdsRef.current = ids;
+    callbacksRef.current.onViewportChange?.(ids);
+  }, []);
+
+  useEffect(() => {
+    const L = leafletRef.current;
+    const map = mapRef.current;
+    if (!ready || !L || !map) return;
+    reconcileMapEntries(featureLayersRef.current, features, (feature) => {
+      const options = callbacksRef.current.pathOptions(feature, feature.properties.id === selectedIdRef.current);
+      const layer = L.geoJSON(feature, {
+        style: () => options,
+        pointToLayer: (_point, latlng) => L.circleMarker(latlng, options),
+      });
+      layer.on("mouseover", (event) => {
+        const tooltip = hoverTooltipRef.current;
+        if (!tooltip) return;
+        closeTooltipTimerRef.current = cancelTooltipClose(closeTooltipTimerRef.current);
+        if (tooltipFrameRef.current !== null) cancelAnimationFrame(tooltipFrameRef.current);
+        hoveredFeatureRef.current = feature;
+        tooltip.setContent(feature.properties.label).setLatLng(event.latlng);
+        if (!map.hasLayer(tooltip)) tooltip.addTo(map);
+        tooltipFrameRef.current = requestAnimationFrame(() => {
+          tooltip.getElement()?.classList.add("map-explorer__hover-tooltip--visible");
+          tooltipFrameRef.current = null;
+        });
+      });
+      layer.on("mousemove", (event) => {
+        if (hoveredFeatureRef.current === feature) hoverTooltipRef.current?.setLatLng(event.latlng);
+      });
+      layer.on("mouseout", () => {
+        if (hoveredFeatureRef.current !== feature) return;
+        const tooltip = hoverTooltipRef.current;
+        if (!tooltip) return;
+        hoveredFeatureRef.current = null;
+        if (tooltipFrameRef.current !== null) cancelAnimationFrame(tooltipFrameRef.current);
+        tooltipFrameRef.current = null;
+        tooltip.getElement()?.classList.remove("map-explorer__hover-tooltip--visible");
+        closeTooltipTimerRef.current = scheduleTooltipClose(() => {
+          if (map.hasLayer(tooltip)) map.removeLayer(tooltip);
+          closeTooltipTimerRef.current = null;
+        });
+      });
+      layer.on("click", () => callbacksRef.current.onSelect(feature.properties.id));
+      layer.addTo(map);
+      return { feature, layer, bounds: layer.getBounds(), label: null, editMarkers: [] };
+    }, (entry) => {
+      if (hoveredFeatureRef.current === entry.feature) {
+        hoveredFeatureRef.current = null;
+        closeTooltipTimerRef.current = cancelTooltipClose(closeTooltipTimerRef.current);
+        if (tooltipFrameRef.current !== null) cancelAnimationFrame(tooltipFrameRef.current);
+        tooltipFrameRef.current = null;
+        const tooltip = hoverTooltipRef.current;
+        if (tooltip && map.hasLayer(tooltip)) map.removeLayer(tooltip);
+      }
+      entry.label?.remove();
+      for (const marker of entry.editMarkers) marker.remove();
+      entry.layer.remove();
+    });
+    if (reportsViewport) reportViewport();
+  }, [features, ready, reportViewport, reportsViewport]);
+
+  useEffect(() => {
+    if (!ready) return;
+    const updateAll = pathOptionsRef.current !== pathOptions;
+    pathOptionsRef.current = pathOptions;
+    updateSelectedEntries(
+      featureLayersRef.current.values(),
+      styledSelectionRef.current,
+      selectedId,
+      updateAll,
+      (entry) => entry.feature.properties.id,
+      (entry, selected) => entry.layer.setStyle(pathOptions(entry.feature, selected)),
+    );
+    styledSelectionRef.current = selectedId;
+  }, [pathOptions, ready, selectedId]);
+
+  useEffect(() => {
+    const L = leafletRef.current;
+    const map = mapRef.current;
+    if (!ready || !L || !map) return;
+    const rendererChanged = labelRendererRef.current !== mapLabel;
+    labelRendererRef.current = mapLabel;
+    for (const entry of featureLayersRef.current.values()) {
+      if (rendererChanged) {
+        entry.label?.remove();
+        entry.label = null;
+      } else if (entry.label) {
+        continue;
+      }
+      const text = mapLabel?.(entry.feature)?.trim();
+      if (!text || !entry.bounds.isValid()) continue;
+      entry.label = L.tooltip({ permanent: true, direction: "center", className: "map-explorer__feature-label", interactive: false, opacity: 1 })
+        .setLatLng(entry.bounds.getCenter()).setContent(text).addTo(map);
+    }
+  }, [features, mapLabel, ready]);
+
+  useEffect(() => {
+    const L = leafletRef.current;
+    const map = mapRef.current;
+    if (!ready || !L || !map) return;
+    const editable = new Set(editableFeatureIds);
+    for (const entry of featureLayersRef.current.values()) {
+      for (const marker of entry.editMarkers) marker.remove();
+      entry.editMarkers = [];
+      const feature = entry.feature;
+      if (!editable.has(feature.properties.id) || feature.geometry.type !== "Polygon") continue;
+      feature.geometry.coordinates[0]?.slice(0, -1).forEach(([lng, lat], index) => {
+        const marker = L.marker([lat, lng], { draggable: true, keyboard: true, title: `Move point ${index + 1} in ${feature.properties.label}`, icon: L.divIcon({ className: "map-explorer__edit-handle", html: "<span></span>", iconSize: [20, 20], iconAnchor: [10, 10] }) });
+        marker.on("dragend", () => { const point = marker.getLatLng(); callbacksRef.current.onVertexMove?.(feature.properties.editId ?? feature.properties.id, index, [point.lng, point.lat]); });
+        marker.addTo(map);
+        entry.editMarkers.push(marker);
+      });
+    }
+  }, [editableFeatureSignature, features, ready]);
+
+  useEffect(() => {
+    const L = leafletRef.current;
+    const map = mapRef.current;
+    if (!ready || !L || !map || fittedRef.current || features.length === 0) return;
+    const fitBounds = bounds ? L.latLngBounds(bounds) : L.latLngBounds([]);
+    if (!bounds) for (const entry of featureLayersRef.current.values()) fitBounds.extend(entry.bounds);
+    if (fitBounds.isValid()) map.fitBounds(fitBounds, { animate: false, padding: [28, 28], maxZoom: maxFitZoom });
+    fittedRef.current = true;
+  }, [boundsSignature, features, maxFitZoom, ready]);
+
+  useEffect(() => {
+    const L = leafletRef.current;
+    const map = mapRef.current;
+    if (!ready || !L || !map || selectedId === previousSelectionRef.current) return;
+    if (selectedId) {
+      const selectedBounds = L.latLngBounds([]);
+      for (const entry of featureLayersRef.current.values()) {
+        if (entry.feature.properties.id === selectedId) selectedBounds.extend(entry.bounds);
+      }
+      if (selectedBounds.isValid() && !map.getBounds().intersects(selectedBounds)) {
+        map.stop();
+        map.panTo(selectedBounds.getCenter(), selectionPanOptions);
+      }
+    }
+    previousSelectionRef.current = selectedId;
+  }, [features, ready, selectedId]);
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !onViewportChange) return;
-    const report = () => void import("leaflet").then(({ default: L }) => callbacksRef.current.onViewportChange?.([...new Set(features.filter((feature) => map.getBounds().intersects(L.geoJSON(feature).getBounds())).map((feature) => feature.properties.id))]));
-    map.on("moveend zoomend", report);
-    return () => { map.off("moveend zoomend", report); };
-  }, [features, onViewportChange, ready]);
+    if (!map || !reportsViewport) return;
+    viewportIdsRef.current = null;
+    reportViewport();
+    map.on("moveend zoomend", reportViewport);
+    return () => { map.off("moveend zoomend", reportViewport); };
+  }, [ready, reportViewport, reportsViewport]);
 
   useEffect(() => {
     const listener = () => setNativeFullscreen(document.fullscreenElement === surfaceRef.current);
@@ -728,7 +814,17 @@ export function MapCanvas({
     window.addEventListener("keydown", escape);
     return () => { document.body.style.overflow = previous; window.removeEventListener("keydown", escape); };
   }, [fallbackFullscreen]);
-  useEffect(() => { window.setTimeout(() => mapRef.current?.invalidateSize(), 80); }, [fullscreen]);
+  useEffect(() => {
+    if (invalidateTimerRef.current) clearTimeout(invalidateTimerRef.current);
+    invalidateTimerRef.current = setTimeout(() => {
+      mapRef.current?.invalidateSize();
+      invalidateTimerRef.current = null;
+    }, 80);
+    return () => {
+      if (invalidateTimerRef.current) clearTimeout(invalidateTimerRef.current);
+      invalidateTimerRef.current = null;
+    };
+  }, [fullscreen]);
 
   const toggleFullscreen = useCallback(async () => {
     if (document.fullscreenElement) return document.exitFullscreen();
@@ -748,9 +844,3 @@ export function MapCanvas({
     </div>
   );
 }
-
-/** @deprecated Use MapCanvas for the low-level map primitive. */
-export const MapWorkspace = MapCanvas;
-export type MapWorkspaceFeature = MapExplorerFeature;
-export type MapWorkspaceProps = MapCanvasProps;
-export type MapWorkspaceControlActions = MapCanvasActions;

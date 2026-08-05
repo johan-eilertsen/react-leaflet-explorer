@@ -29,7 +29,6 @@
 }
 .map-explorer *, .map-explorer *::before, .map-explorer *::after { box-sizing: border-box; }
 .map-explorer button, .map-explorer input { font: inherit; }
-.map-explorer__sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 .map-explorer__toolbar { position: relative; max-width: 42rem; margin: 0 auto .75rem 0; }
 .map-explorer__combobox { position: relative; min-width: 0; flex: 1; }
 .map-explorer__search { position: relative; display: flex; min-height: 2.75rem; align-items: center; gap: .55rem; padding-inline: .75rem; border: 1px solid var(--map-explorer-border); border-radius: var(--map-explorer-radius); background: var(--map-explorer-background); color: var(--map-explorer-foreground); }

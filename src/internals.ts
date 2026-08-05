@@ -1,0 +1,84 @@
+import type { MapExplorerFeature } from "./index.js";
+
+export type MapSearchRecord = {
+  id: string;
+  type: string;
+  haystack: string;
+  representative: MapExplorerFeature;
+};
+
+export function sameMapFeatureIds(current: string[] | null, next: string[]) {
+  return current !== null && current.length === next.length && current.every((id, index) => id === next[index]);
+}
+
+export function reconcileMapEntries<TFeature extends object, TEntry>(
+  registry: Map<TFeature, TEntry>,
+  features: TFeature[],
+  create: (feature: TFeature) => TEntry,
+  remove: (entry: TEntry) => void,
+) {
+  const active = new Set(features);
+  for (const [feature, entry] of registry) {
+    if (active.has(feature)) continue;
+    remove(entry);
+    registry.delete(feature);
+  }
+  for (const feature of features) {
+    if (!registry.has(feature)) registry.set(feature, create(feature));
+  }
+}
+
+export function collectVisibleFeatureIds(
+  features: MapExplorerFeature[],
+  intersects: (feature: MapExplorerFeature) => boolean,
+) {
+  const ids: string[] = [];
+  const seen = new Set<string>();
+  for (const feature of features) {
+    const id = feature.properties.id;
+    if (seen.has(id) || !intersects(feature)) continue;
+    seen.add(id);
+    ids.push(id);
+  }
+  return ids;
+}
+
+export function updateSelectedEntries<TEntry>(
+  entries: Iterable<TEntry>,
+  previousSelectedId: string | null,
+  nextSelectedId: string | null,
+  updateAll: boolean,
+  getId: (entry: TEntry) => string,
+  update: (entry: TEntry, selected: boolean) => void,
+) {
+  let count = 0;
+  for (const entry of entries) {
+    const id = getId(entry);
+    if (!updateAll && id !== previousSelectedId && id !== nextSelectedId) continue;
+    update(entry, id === nextSelectedId);
+    count += 1;
+  }
+  return count;
+}
+
+export function buildMapSearchIndex(features: MapExplorerFeature[]) {
+  const records = new Map<string, MapSearchRecord>();
+  for (const feature of features) {
+    const { id, label, type, typeLabel, searchText } = feature.properties;
+    const text = `${label} ${typeLabel ?? type} ${searchText ?? ""}`.toLocaleLowerCase();
+    const existing = records.get(id);
+    if (existing) {
+      if (!existing.haystack.includes(text)) existing.haystack += ` ${text}`;
+    } else {
+      records.set(id, { id, type, haystack: text, representative: feature });
+    }
+  }
+  return [...records.values()];
+}
+
+export function filterMapSearchIndex(records: MapSearchRecord[], query: string, type = "all") {
+  const needle = query.trim().toLocaleLowerCase();
+  return records.filter((record) =>
+    (type === "all" || record.type === type) && (!needle || record.haystack.includes(needle)),
+  );
+}

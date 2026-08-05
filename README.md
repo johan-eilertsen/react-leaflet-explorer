@@ -39,7 +39,9 @@ export function PlacesMap() {
 ```
 
 OpenStreetMap tiles are the default. Supply `tileUrl` and `attribution` when
-using another tile provider.
+using another tile provider. The map fits non-empty feature data on first load.
+For an empty initial map, pass `center` or `bounds` to choose a relevant start
+view; the generic fallback center is `[0, 0]`.
 
 ## Feature shape
 
@@ -142,8 +144,8 @@ omit it and keep the same explorer behavior without internal metadata.
 
 ## Input behavior
 
-- A vertical mouse-wheel or trackpad gesture keeps scrolling the page.
-- A horizontal two-finger trackpad gesture pans the map.
+- A pixel-based two-finger trackpad gesture pans the map in both axes and keeps
+  the surrounding page still while the pointer is over the map.
 - Ctrl + trackpad pinch zooms smoothly around the pointer.
 - Direct touch pans and pinches without an activation step.
 - Keyboard navigation is available in the combobox and map.
@@ -158,8 +160,13 @@ application's responsibility.
 
 `MapCanvas` exposes the map frame, geometry rendering and input behavior
 without the toolbar or built-in overlays. Use it only when the complete
-`MapExplorer` product surface does not fit. `MapWorkspace` remains as a
-deprecated alias for migration from the pre-release package.
+`MapExplorer` product surface does not fit.
+
+## 0.2 migration
+
+The pre-release `MapWorkspace` alias and the undocumented filtering helpers
+were removed in 0.2. Import `MapCanvas` for the low-level primitive and keep
+application-specific filtering outside the package.
 
 ## License
 
