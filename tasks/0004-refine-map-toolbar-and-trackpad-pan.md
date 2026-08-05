@@ -43,4 +43,8 @@ aggressiv kartbevegelse.
 - Hysværs designkontrakt anbefaler beskrivelse som hovedinnhold i infoboksen og
   navn som fallback inntil flere beskrivelser finnes.
 - Tester og TypeScript-bygg består.
-- Gjenstår: publisering av `0.1.9`, Hysvær staging og fysisk Mac-QA.
+- `0.1.10` er publisert og tatt i bruk på Hysvær staging.
+- Nettleser-QA bekrefter at popup- og inputtekst deler venstrekant (avvik under
+  0,1 px), at telleren står i fast 10,5 rem bredde utenfor feltet, og at en
+  pixelbasert wheel-hendelse panorerer kartet mens dokumentscroll stoppes.
+- Gjenstår: fysisk følelse med Mac-trackpad.
