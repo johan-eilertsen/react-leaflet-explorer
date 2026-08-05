@@ -37,4 +37,8 @@ viser én stabil tooltip.
 - Aktivt søk eller typefilter viser deduplisert antall treff i viewporten.
 - Kartlagene deler én tooltip med 90 ms fade og forsinket lukking.
 - Tester og TypeScript-bygg består.
-- Gjenstår: publisering av `0.1.7`, Hysvær staging og rendret QA.
+- `react-leaflet-explorer@0.1.7` er publisert med Trusted Publishing.
+- Hysvær staging bruker `0.1.7` i deployment
+  `dpl_4qJQDA8o7uJTv7LCVL89nnjudLoj`.
+- Den innledende rendringen er kontrollert. Browser-relayet timet ut under
+  siste hover- og klikkmåling, så fysisk hover-QA gjenstår hos Johan.
