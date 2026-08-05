@@ -109,8 +109,20 @@ kept inside the component tree, so a locally scoped theme applies to it too.
   --map-explorer-selected: #a74420;
   --map-explorer-selected-fill: #cf7b54;
   --map-explorer-radius: 0.4rem;
+  --map-explorer-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --map-explorer-ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --map-explorer-ease-feedback: ease;
+  --map-explorer-duration-feedback: 120ms;
+  --map-explorer-duration-press: 140ms;
+  --map-explorer-duration-tooltip: 150ms;
+  --map-explorer-duration-geometry: 160ms;
+  --map-explorer-duration-popup: 180ms;
 }
 ```
+
+Motion variables can be overridden with the rest of the theme. The component
+removes spatial transforms for `prefers-reduced-motion` while preserving short
+opacity and color feedback.
 
 Use `pathOptions` when geometry needs more than token changes. The default
 outline is one pixel, or two pixels for the selected feature.

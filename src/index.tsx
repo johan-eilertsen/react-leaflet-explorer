@@ -12,6 +12,14 @@ import {
   type CSSProperties,
   type ReactNode,
 } from "react";
+import {
+  cancelTooltipClose,
+  directGesturePanOptions,
+  getPresenceTransition,
+  scheduleTooltipClose,
+  selectedOverlayDurationMs,
+  selectionPanOptions,
+} from "./motion.js";
 
 export type MapExplorerFeature = Feature<Geometry, {
   id: string;
@@ -165,6 +173,71 @@ function Icon({ name }: { name: "search" | "chevron" | "expand" | "collapse" | "
     close: <path d="m6 6 12 12M18 6 6 18" />,
   };
   return <svg aria-hidden="true" viewBox="0 0 24 24" className="map-explorer__icon">{paths[name]}</svg>;
+}
+
+function SelectedOverlayPresence({ children }: { children: ReactNode }) {
+  const present = children != null;
+  const [rendered, setRendered] = useState<ReactNode>(children);
+  const [status, setStatus] = useState<"starting" | "open" | "ending">(present ? "starting" : "ending");
+  const exitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const enterFrameRef = useRef<number | null>(null);
+  const previousPresenceRef = useRef(false);
+  const latestChildrenRef = useRef(children);
+  latestChildrenRef.current = children;
+
+  useEffect(() => {
+    if (present) setRendered(children);
+  }, [children, present]);
+
+  useEffect(() => {
+    const transition = getPresenceTransition(previousPresenceRef.current, present);
+    previousPresenceRef.current = present;
+    if (!transition) return;
+
+    if (exitTimerRef.current) {
+      clearTimeout(exitTimerRef.current);
+      exitTimerRef.current = null;
+    }
+    if (enterFrameRef.current !== null) {
+      cancelAnimationFrame(enterFrameRef.current);
+      enterFrameRef.current = null;
+    }
+
+    if (transition === "enter") {
+      setRendered(latestChildrenRef.current);
+      setStatus("starting");
+      enterFrameRef.current = requestAnimationFrame(() => {
+        setStatus("open");
+        enterFrameRef.current = null;
+      });
+      return;
+    }
+
+    setStatus("ending");
+    exitTimerRef.current = setTimeout(() => {
+      setRendered(null);
+      exitTimerRef.current = null;
+    }, selectedOverlayDurationMs);
+  }, [present]);
+
+  useEffect(() => () => {
+    previousPresenceRef.current = false;
+    if (exitTimerRef.current) clearTimeout(exitTimerRef.current);
+    if (enterFrameRef.current !== null) cancelAnimationFrame(enterFrameRef.current);
+  }, []);
+
+  if (rendered == null) return null;
+
+  return (
+    <div
+      className="map-explorer__selected-presence"
+      data-starting-style={status === "starting" ? "" : undefined}
+      data-open={status === "open" ? "" : undefined}
+      data-ending-style={status === "ending" ? "" : undefined}
+    >
+      {rendered}
+    </div>
+  );
 }
 
 function ExplorerCombobox({
@@ -526,7 +599,7 @@ export function MapCanvas({
           if (frame === null) frame = requestAnimationFrame(applyZoom);
         } else if (event.deltaMode === WheelEvent.DOM_DELTA_PIXEL) {
           event.preventDefault(); event.stopPropagation();
-          map.panBy([pixelX, pixelY], { animate: false });
+          map.panBy([pixelX, pixelY], directGesturePanOptions);
         }
       };
       element.addEventListener("wheel", handleWheel, { passive: false });
@@ -568,7 +641,7 @@ export function MapCanvas({
         const layer = L.geoJSON(feature, { style: () => options, pointToLayer: (_point, latlng) => L.circleMarker(latlng, options) });
         layer.on("mouseover", (event) => {
           if (!hoverTooltip) return;
-          if (closeTooltipTimer) clearTimeout(closeTooltipTimer);
+          closeTooltipTimer = cancelTooltipClose(closeTooltipTimer);
           hoverTooltip.setContent(feature.properties.label).setLatLng(event.latlng);
           if (!map.hasLayer(hoverTooltip)) hoverTooltip.addTo(map);
           requestAnimationFrame(() => hoverTooltip?.getElement()?.classList.add("map-explorer__hover-tooltip--visible"));
@@ -578,9 +651,10 @@ export function MapCanvas({
           const tooltip = hoverTooltip;
           if (!tooltip) return;
           tooltip.getElement()?.classList.remove("map-explorer__hover-tooltip--visible");
-          closeTooltipTimer = setTimeout(() => {
+          closeTooltipTimer = scheduleTooltipClose(() => {
             if (map.hasLayer(tooltip)) map.removeLayer(tooltip);
-          }, 90);
+            closeTooltipTimer = null;
+          });
         });
         layer.on("click", () => callbacksRef.current.onSelect(feature.properties.id));
         layer.addTo(group);
@@ -618,7 +692,8 @@ export function MapCanvas({
         if (selected.length) {
           const selectedBounds = L.geoJSON(collection(selected)).getBounds();
           if (selectedBounds.isValid() && !map.getBounds().intersects(selectedBounds)) {
-            map.panTo(selectedBounds.getCenter(), { animate: false });
+            map.stop();
+            map.panTo(selectedBounds.getCenter(), selectionPanOptions);
           }
         }
         previousSelectionRef.current = selectedId;
@@ -627,7 +702,7 @@ export function MapCanvas({
     });
     return () => {
       cancelled = true;
-      if (closeTooltipTimer) clearTimeout(closeTooltipTimer);
+      closeTooltipTimer = cancelTooltipClose(closeTooltipTimer);
       if (hoverTooltip && mapRef.current?.hasLayer(hoverTooltip)) mapRef.current.removeLayer(hoverTooltip);
     };
   }, [bounds, editableFeatureIds, features, maxFitZoom, ready, selectedId]);
@@ -667,7 +742,7 @@ export function MapCanvas({
       {topOverlay}
       <div className={`map-explorer__frame ${frameClassName ?? ""}`}>
         <div ref={mapElementRef} className="map-explorer__canvas" role="application" aria-label={ariaLabel} tabIndex={0} />
-        {selectedOverlay}
+        <SelectedOverlayPresence>{selectedOverlay}</SelectedOverlayPresence>
         {renderControls?.(actions)}
       </div>
     </div>
