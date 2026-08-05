@@ -39,12 +39,14 @@ viser én stabil tooltip.
 - Aktivt søk eller typefilter viser deduplisert antall treff i viewporten.
 - Kartlagene deler én tooltip med 90 ms fade og forsinket lukking.
 - Tester og TypeScript-bygg består.
-- `react-leaflet-explorer@0.1.7` er publisert med Trusted Publishing.
-- Hysvær staging bruker `0.1.7` i deployment
-  `dpl_4qJQDA8o7uJTv7LCVL89nnjudLoj`.
+- `react-leaflet-explorer@0.1.8` er publisert med Trusted Publishing.
+- Hysvær staging bruker `0.1.8` i deployment
+  `dpl_aSPD9QXrrSWq32oKwS6b3891SNmu`.
 - Den innledende rendringen er kontrollert. Browser-relayet timet ut under
   siste hover- og klikkmåling, så fysisk hover-QA gjenstår hos Johan.
 - En render-loop i `0.1.7` ble funnet etter stagingrapport: en ny tom
   `editableFeatureIds`-liste per render utløste full omtegning etter hver
   viewport-state. `0.1.8` bruker stabil standardreferanse og dedupliserer
   uendrede viewport-callbacker.
+- Rendret kontroll over 1,5 sekunder viste null DOM-mutasjoner etter første
+  karttegning, med alle 732 kartbaner stabilt montert.
