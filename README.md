@@ -107,8 +107,8 @@ outline is one pixel, or two pixels for the selected feature.
 
 ## Input behavior
 
-- Mouse wheel zooms around the pointer.
-- A two-finger trackpad gesture pans in both axes.
+- A vertical mouse-wheel or trackpad gesture keeps scrolling the page.
+- A horizontal two-finger trackpad gesture pans the map.
 - Ctrl + trackpad pinch zooms smoothly around the pointer.
 - Direct touch pans and pinches without an activation step.
 - Keyboard navigation is available in the combobox and map.

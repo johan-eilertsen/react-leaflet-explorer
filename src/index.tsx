@@ -6,7 +6,6 @@ import type { LayerGroup, Map as LeafletMap, PathOptions } from "leaflet";
 import {
   useCallback,
   useEffect,
-  useId,
   useMemo,
   useRef,
   useState,
@@ -173,7 +172,7 @@ function FilterCombobox({
   const selected = options.find((option) => option.value === value) ?? options[0];
   const containerRef = useRef<HTMLDivElement>(null);
   return (
-    <Combobox.Root
+    <Combobox.Root<MapExplorerFilter>
       items={options}
       value={selected}
       onValueChange={(next) => next && onValueChange(next.value)}
@@ -192,6 +191,66 @@ function FilterCombobox({
               {options.map((option) => (
                 <Combobox.Item key={option.value} value={option} className="map-explorer__item">
                   <span>{option.label}</span><Combobox.ItemIndicator aria-hidden="true">✓</Combobox.ItemIndicator>
+                </Combobox.Item>
+              ))}
+            </Combobox.List>
+          </Combobox.Popup>
+        </Combobox.Positioner>
+      </Combobox.Portal>
+    </Combobox.Root>
+  );
+}
+
+function PlaceCombobox({
+  features,
+  query,
+  onQueryChange,
+  onSelect,
+  labels,
+}: {
+  features: MapExplorerFeature[];
+  query: string;
+  onQueryChange: (value: string) => void;
+  onSelect: (id: string) => void;
+  labels: Pick<MapExplorerLabels, "search" | "searchPlaceholder" | "noResults">;
+}) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  return (
+    <Combobox.Root<MapExplorerFeature>
+      items={features}
+      value={null}
+      inputValue={query}
+      onInputValueChange={(value, eventDetails) => {
+        if (eventDetails.reason === "input-change" || eventDetails.reason === "input-clear") {
+          onQueryChange(value);
+        }
+      }}
+      onValueChange={(feature) => {
+        if (!feature) return;
+        onSelect(feature.properties.id);
+        onQueryChange("");
+      }}
+      itemToStringLabel={(feature) => feature.properties.label}
+      isItemEqualToValue={(feature, current) => feature.properties.id === current.properties.id}
+    >
+      <div ref={containerRef} className="map-explorer__search">
+        <Icon name="search" />
+        <Combobox.Input aria-label={labels.search} placeholder={labels.searchPlaceholder} />
+      </div>
+      <Combobox.Portal container={containerRef}>
+        <Combobox.Positioner sideOffset={6} className="map-explorer__positioner">
+          <Combobox.Popup className="map-explorer__popup map-explorer__search-popup">
+            <Combobox.Empty className="map-explorer__empty">{labels.noResults}</Combobox.Empty>
+            <Combobox.List className="map-explorer__list">
+              {features.map((feature) => (
+                <Combobox.Item
+                  key={feature.properties.id}
+                  value={feature}
+                  className="map-explorer__item"
+                  data-feature-id={feature.properties.id}
+                >
+                  <span>{feature.properties.label}</span>
+                  <span className="map-explorer__item-meta">{feature.properties.typeLabel ?? feature.properties.type}</span>
                 </Combobox.Item>
               ))}
             </Combobox.List>
@@ -232,7 +291,6 @@ export function MapExplorer({
   const selectedId = controlledSelectedId === undefined ? internalSelectedId : controlledSelectedId;
   const [query, setQuery] = useState("");
   const [type, setType] = useState("all");
-  const searchId = useId();
   const typeOptions = useMemo(() => {
     if (filters) return [{ value: "all", label: labels.allTypes }, ...filters.filter((item) => item.value !== "all")];
     const types = new Map<string, string>();
@@ -240,6 +298,13 @@ export function MapExplorer({
     return [{ value: "all", label: labels.allTypes }, ...[...types].map(([value, label]) => ({ value, label }))];
   }, [features, filters, labels.allTypes]);
   const visibleFeatures = useMemo(() => filterMapFeatures(features, query, type), [features, query, type]);
+  const visiblePlaces = useMemo(() => {
+    const places = new Map<string, MapExplorerFeature>();
+    for (const feature of visibleFeatures) {
+      if (!places.has(feature.properties.id)) places.set(feature.properties.id, feature);
+    }
+    return [...places.values()];
+  }, [visibleFeatures]);
   const selected = features.find((feature) => feature.properties.id === selectedId) ?? null;
   const setSelected = useCallback((id: string | null) => {
     if (controlledSelectedId === undefined) setInternalSelectedId(id);
@@ -270,15 +335,17 @@ export function MapExplorer({
         topOverlay={(
           <div className="map-explorer__toolbar-region">
             <div className="map-explorer__toolbar">
-              <label htmlFor={searchId} className="map-explorer__search">
-                <span className="map-explorer__sr-only">{labels.search}</span>
-                <Icon name="search" />
-                <input id={searchId} type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={labels.searchPlaceholder} />
-              </label>
+              <PlaceCombobox
+                features={visiblePlaces}
+                query={query}
+                onQueryChange={setQuery}
+                onSelect={setSelected}
+                labels={labels}
+              />
               <FilterCombobox value={type} onValueChange={setType} options={typeOptions} label={labels.filter} />
               <button type="button" className="map-explorer__reset" onClick={reset} disabled={!hasFilters}>{labels.reset}</button>
             </div>
-            {visibleFeatures.length === 0 ? <p className="map-explorer__status" role="status">{labels.noResults}</p> : null}
+            {visiblePlaces.length === 0 ? <p className="map-explorer__status" role="status">{labels.noResults}</p> : null}
           </div>
         )}
         selectedOverlay={selected ? (
@@ -341,20 +408,37 @@ export function MapCanvas({
   const [fallbackFullscreen, setFallbackFullscreen] = useState(false);
   callbacksRef.current = { onSelect, onViewportChange, onVertexMove, pathOptions };
   const fullscreen = nativeFullscreen || fallbackFullscreen;
+  const centerLatitude = center[0];
+  const centerLongitude = center[1];
 
   useEffect(() => {
     let cancelled = false;
     let removeWheel: (() => void) | undefined;
+    let frame: number | null = null;
     const element = mapElementRef.current;
     if (!element || mapRef.current) return;
     void import("leaflet").then((module) => {
       if (cancelled || !mapElementRef.current) return;
       const L = module.default;
-      const map = L.map(mapElementRef.current, { center, zoom: initialZoom, minZoom, maxZoom, zoomControl: false, scrollWheelZoom: false, dragging: true, touchZoom: true, doubleClickZoom: true, keyboard: true, zoomSnap: 0 });
+      const map = L.map(mapElementRef.current, {
+        center: [centerLatitude, centerLongitude],
+        zoom: initialZoom,
+        minZoom,
+        maxZoom,
+        zoomControl: false,
+        scrollWheelZoom: false,
+        dragging: true,
+        touchZoom: true,
+        doubleClickZoom: true,
+        keyboard: true,
+        zoomSnap: 0,
+        zoomAnimation: false,
+        fadeAnimation: false,
+        markerZoomAnimation: false,
+      });
       mapRef.current = map;
       L.tileLayer(tileUrl, { attribution, maxZoom }).addTo(map);
       layersRef.current = L.layerGroup().addTo(map);
-      let frame: number | null = null;
       let zoomDelta = 0;
       let zoomPoint = L.point(0, 0);
       const applyZoom = () => {
@@ -363,16 +447,16 @@ export function MapCanvas({
         map.setZoomAround(zoomPoint, next, { animate: false });
       };
       const handleWheel = (event: WheelEvent) => {
-        event.preventDefault(); event.stopPropagation();
         const unit = event.deltaMode === WheelEvent.DOM_DELTA_LINE ? 16 : event.deltaMode === WheelEvent.DOM_DELTA_PAGE ? element.clientHeight : 1;
         const pixelX = event.deltaX * unit;
         const pixelY = event.deltaY * unit;
-        const looksLikeMouseWheel = event.deltaMode !== WheelEvent.DOM_DELTA_PIXEL || (Math.abs(pixelX) < 1 && Math.abs(pixelY) >= 40);
-        if (event.ctrlKey || looksLikeMouseWheel) {
+        if (event.ctrlKey) {
+          event.preventDefault(); event.stopPropagation();
           zoomDelta += pixelY;
           zoomPoint = map.mouseEventToContainerPoint(event);
           if (frame === null) frame = requestAnimationFrame(applyZoom);
-        } else {
+        } else if (event.deltaMode === WheelEvent.DOM_DELTA_PIXEL && Math.abs(pixelX) > Math.abs(pixelY)) {
+          event.preventDefault(); event.stopPropagation();
           map.panBy([pixelX, pixelY], { animate: false });
         }
       };
@@ -380,8 +464,16 @@ export function MapCanvas({
       removeWheel = () => element.removeEventListener("wheel", handleWheel);
       setReady(true);
     });
-    return () => { cancelled = true; removeWheel?.(); mapRef.current?.remove(); mapRef.current = null; layersRef.current = null; };
-  }, [attribution, center, initialZoom, maxZoom, minZoom, tileUrl]);
+    return () => {
+      cancelled = true;
+      removeWheel?.();
+      if (frame !== null) cancelAnimationFrame(frame);
+      mapRef.current?.stop();
+      mapRef.current?.remove();
+      mapRef.current = null;
+      layersRef.current = null;
+    };
+  }, [attribution, centerLatitude, centerLongitude, initialZoom, maxZoom, minZoom, tileUrl]);
 
   useEffect(() => {
     if (!ready || !mapRef.current || !layersRef.current) return;
@@ -410,14 +502,14 @@ export function MapCanvas({
       }
       if (!fittedRef.current && features.length) {
         const fitBounds = bounds ? L.latLngBounds(bounds) : L.geoJSON(collection(features)).getBounds();
-        if (fitBounds.isValid()) map.fitBounds(fitBounds, { padding: [28, 28], maxZoom: maxFitZoom });
+        if (fitBounds.isValid()) map.fitBounds(fitBounds, { animate: false, padding: [28, 28], maxZoom: maxFitZoom });
         fittedRef.current = true;
       }
       if (selectedId && selectedId !== previousSelectionRef.current) {
         const selected = features.filter((feature) => feature.properties.id === selectedId);
         if (selected.length) {
           const selectedBounds = L.geoJSON(collection(selected)).getBounds();
-          if (selectedBounds.isValid()) map.fitBounds(selectedBounds, { padding: [48, 48], maxZoom: maxFitZoom });
+          if (selectedBounds.isValid()) map.fitBounds(selectedBounds, { animate: false, padding: [48, 48], maxZoom: maxFitZoom });
         }
         previousSelectionRef.current = selectedId;
       }
