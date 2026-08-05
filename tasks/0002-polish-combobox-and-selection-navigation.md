@@ -39,4 +39,9 @@ forsiktig uten aggressiv innzooming.
 - Stedsvalg beholder zoom. Kartet panorerer bare når objektet ikke overlapper
   viewporten.
 - Test, TypeScript-bygg og pakkekontroll består.
-- Gjenstår: publisering av `0.1.6`, Hysvær staging og fysisk visuell QA.
+- `react-leaflet-explorer@0.1.6` er publisert med Trusted Publishing.
+- Hysvær staging bruker `0.1.6` i deployment
+  `dpl_3krneGZXE1vtk4WmHvhxMK6Z8HbH`.
+- Rendret desktop-QA bekrefter stabil filter- og X-posisjon før og etter fokus,
+  valgt stedsnavn, scroll-fade og uendret zoom ved valg av synlig objekt.
+- Gjenstår: Johans kontroll på fysisk Mac og mobil.
