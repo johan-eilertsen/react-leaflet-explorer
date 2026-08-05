@@ -184,8 +184,29 @@ function ExplorerCombobox({
   labels: Pick<MapExplorerLabels, "search" | "searchPlaceholder" | "filter" | "reset" | "noResults">;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const [scrollEdges, setScrollEdges] = useState({ top: false, bottom: false });
   const activeType = typeOptions.find((option) => option.value === type) ?? typeOptions[0];
+  const selected = features.find((feature) => feature.properties.id === selectedId) ?? null;
   const hasActiveChoice = query.length > 0 || type !== "all" || selectedId !== null;
+  const updateScrollEdges = useCallback(() => {
+    const list = listRef.current;
+    if (!list) return;
+    setScrollEdges({
+      top: list.scrollTop > 1,
+      bottom: list.scrollTop + list.clientHeight < list.scrollHeight - 1,
+    });
+  }, []);
+  const setListElement = useCallback((node: HTMLDivElement | null) => {
+    listRef.current = node;
+    if (node) requestAnimationFrame(updateScrollEdges);
+  }, [updateScrollEdges]);
+
+  useEffect(() => {
+    const frame = requestAnimationFrame(updateScrollEdges);
+    return () => cancelAnimationFrame(frame);
+  }, [features, updateScrollEdges]);
+
   return (
     <Combobox.Root<MapExplorerFeature>
       items={features}
@@ -204,25 +225,37 @@ function ExplorerCombobox({
       itemToStringLabel={(feature) => feature.properties.label}
       isItemEqualToValue={(feature, current) => feature.properties.id === current.properties.id}
     >
-      <div ref={containerRef} className="map-explorer__search">
-        <Icon name="search" />
-        <Combobox.Input aria-label={labels.search} placeholder={labels.searchPlaceholder} />
-        <span className="map-explorer__active-filter">{activeType.label}</span>
-        {hasActiveChoice ? (
-          <button
-            type="button"
-            className="map-explorer__reset"
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={(event) => {
-              event.stopPropagation();
-              onReset();
-            }}
-            aria-label={labels.reset}
-            title={labels.reset}
-          >
-            <Icon name="close" />
-          </button>
-        ) : null}
+      <div ref={containerRef} className="map-explorer__combobox">
+        <div className="map-explorer__search">
+          <Icon name="search" />
+          <div className="map-explorer__input-slot">
+            <Combobox.Input
+              aria-label={labels.search}
+              placeholder={labels.searchPlaceholder}
+            />
+            {selected && !query ? (
+              <span className="map-explorer__selected-value" aria-hidden="true">
+                {selected.properties.label}
+              </span>
+            ) : null}
+          </div>
+          <span className="map-explorer__active-filter">{activeType.label}</span>
+          {hasActiveChoice ? (
+            <button
+              type="button"
+              className="map-explorer__reset"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={(event) => {
+                event.stopPropagation();
+                onReset();
+              }}
+              aria-label={labels.reset}
+              title={labels.reset}
+            >
+              <Icon name="close" />
+            </button>
+          ) : null}
+        </div>
       </div>
       <Combobox.Portal container={containerRef}>
         <Combobox.Positioner sideOffset={6} className="map-explorer__positioner">
@@ -243,19 +276,25 @@ function ExplorerCombobox({
               ))}
             </div>
             <Combobox.Empty className="map-explorer__empty">{labels.noResults}</Combobox.Empty>
-            <Combobox.List className="map-explorer__list">
-              {features.map((feature) => (
-                <Combobox.Item
-                  key={feature.properties.id}
-                  value={feature}
-                  className="map-explorer__item"
-                  data-feature-id={feature.properties.id}
-                >
-                  <span>{feature.properties.label}</span>
-                  <span className="map-explorer__item-meta">{feature.properties.typeLabel ?? feature.properties.type}</span>
-                </Combobox.Item>
-              ))}
-            </Combobox.List>
+            <div
+              className="map-explorer__list-shell"
+              data-fade-top={scrollEdges.top || undefined}
+              data-fade-bottom={scrollEdges.bottom || undefined}
+            >
+              <Combobox.List ref={setListElement} className="map-explorer__list" onScroll={updateScrollEdges}>
+                {features.map((feature) => (
+                  <Combobox.Item
+                    key={feature.properties.id}
+                    value={feature}
+                    className="map-explorer__item"
+                    data-feature-id={feature.properties.id}
+                  >
+                    <span>{feature.properties.label}</span>
+                    <span className="map-explorer__item-meta">{feature.properties.typeLabel ?? feature.properties.type}</span>
+                  </Combobox.Item>
+                ))}
+              </Combobox.List>
+            </div>
           </Combobox.Popup>
         </Combobox.Positioner>
       </Combobox.Portal>
@@ -536,7 +575,9 @@ export function MapCanvas({
         const selected = features.filter((feature) => feature.properties.id === selectedId);
         if (selected.length) {
           const selectedBounds = L.geoJSON(collection(selected)).getBounds();
-          if (selectedBounds.isValid()) map.fitBounds(selectedBounds, { animate: false, padding: [48, 48], maxZoom: maxFitZoom });
+          if (selectedBounds.isValid() && !map.getBounds().intersects(selectedBounds)) {
+            map.panTo(selectedBounds.getCenter(), { animate: false });
+          }
         }
         previousSelectionRef.current = selectedId;
       }

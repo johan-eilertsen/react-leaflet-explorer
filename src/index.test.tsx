@@ -54,5 +54,7 @@ describe("MapExplorer", () => {
 
     expect(markup.match(/role="combobox"/g) ?? []).toHaveLength(1);
     expect(markup).toContain('aria-label="Reset filters"');
+    expect(markup).toContain("Myrøya");
+    expect(markup).toContain("map-explorer__selected-value");
   });
 });
