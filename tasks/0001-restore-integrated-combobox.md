@@ -34,4 +34,7 @@ komboboksen og en X som nullstiller søk, filter og valgt sted.
 - Typevalgene ligger øverst i samme popup som stedsforslagene.
 - X nullstiller søk, aktivt typefilter og valgt sted.
 - Regresjonstest, bygg og `npm pack --dry-run` består for versjon `0.1.5`.
-- Gjenstår: publisering til npm og verifisering i Hysvær staging.
+- `react-leaflet-explorer@0.1.5` er publisert med npm Trusted Publishing.
+- Hysvær bruker `0.1.5` i staging-deployment
+  `dpl_EYcZQPygasEsHGi9Uu6VXAJFCqwi`.
+- Gjenstår: Johans visuelle kontroll på fysisk Mac og mobil.
