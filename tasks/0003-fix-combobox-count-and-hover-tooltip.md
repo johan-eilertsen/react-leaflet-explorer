@@ -26,6 +26,8 @@ viser én stabil tooltip.
 - Telleren dedupliserer objekter med flere geometriedeler.
 - Telleren vises bare når søk eller typefilter er aktivt.
 - Kartet gjenbruker én hover-tooltip og rydder tidsur og lag ved oppdatering.
+- Viewport-telleren oppdaterer state bare når ID-listen faktisk er endret, og
+  standardverdier skal ha stabil referanse mellom renders.
 - Tester, bygg, pakking og Hysvær-integrasjon består.
 
 ## Result
@@ -42,3 +44,7 @@ viser én stabil tooltip.
   `dpl_4qJQDA8o7uJTv7LCVL89nnjudLoj`.
 - Den innledende rendringen er kontrollert. Browser-relayet timet ut under
   siste hover- og klikkmåling, så fysisk hover-QA gjenstår hos Johan.
+- En render-loop i `0.1.7` ble funnet etter stagingrapport: en ny tom
+  `editableFeatureIds`-liste per render utløste full omtegning etter hver
+  viewport-state. `0.1.8` bruker stabil standardreferanse og dedupliserer
+  uendrede viewport-callbacker.

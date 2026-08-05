@@ -124,6 +124,11 @@ const defaultLabels: MapExplorerLabels = {
 };
 
 const defaultCenter: [number, number] = [65.762, 11.723];
+const noEditableFeatureIds: string[] = [];
+
+export function sameMapFeatureIds(current: string[] | null, next: string[]) {
+  return current !== null && current.length === next.length && current.every((id, index) => id === next[index]);
+}
 
 export function filterMapFeatures(features: MapExplorerFeature[], query: string, type = "all") {
   const needle = query.trim().toLocaleLowerCase();
@@ -336,6 +341,7 @@ export function MapExplorer({
   const [query, setQuery] = useState("");
   const [type, setType] = useState("all");
   const [viewportIds, setViewportIds] = useState<string[] | null>(null);
+  const viewportIdsRef = useRef<string[] | null>(null);
   const typeOptions = useMemo(() => {
     if (filters) return [{ value: "all", label: labels.allTypes }, ...filters.filter((item) => item.value !== "all")];
     const types = new Map<string, string>();
@@ -354,6 +360,8 @@ export function MapExplorer({
   const hasActiveFilter = query.length > 0 || type !== "all";
   const resultCount = viewportIds?.length ?? new Set(visibleFeatures.map((feature) => feature.properties.id)).size;
   const handleViewportChange = useCallback((ids: string[]) => {
+    if (sameMapFeatureIds(viewportIdsRef.current, ids)) return;
+    viewportIdsRef.current = ids;
     setViewportIds(ids);
     onViewportChange?.(ids);
   }, [onViewportChange]);
@@ -442,7 +450,7 @@ export function MapCanvas({
   onSelect,
   onViewportChange,
   onVertexMove,
-  editableFeatureIds = [],
+  editableFeatureIds = noEditableFeatureIds,
   pathOptions,
   mapLabel,
   bounds,

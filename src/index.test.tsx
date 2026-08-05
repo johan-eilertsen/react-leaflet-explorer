@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import { MapExplorer, filterMapFeatures, type MapExplorerFeature } from "./index.js";
+import { MapExplorer, filterMapFeatures, sameMapFeatureIds, type MapExplorerFeature } from "./index.js";
 
 const features = [
   {
@@ -25,6 +25,14 @@ describe("filterMapFeatures", () => {
   it("combines text and type filters", () => {
     expect(filterMapFeatures(features, "house", "building").map((item) => item.properties.id)).toEqual(["two"]);
     expect(filterMapFeatures(features, "house", "island")).toEqual([]);
+  });
+});
+
+describe("sameMapFeatureIds", () => {
+  it("suppresses repeated viewport updates without hiding real changes", () => {
+    expect(sameMapFeatureIds(["one", "two"], ["one", "two"])).toBe(true);
+    expect(sameMapFeatureIds(["one", "two"], ["two", "one"])).toBe(false);
+    expect(sameMapFeatureIds(null, [])).toBe(false);
   });
 });
 
