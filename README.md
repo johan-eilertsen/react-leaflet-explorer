@@ -66,6 +66,9 @@ current zoom; the map only pans when the feature is outside the viewport.
 When a query or type filter is active, the explorer shows the deduplicated
 result count for the current viewport. Hover labels reuse one tooltip so only
 the feature under the pointer is announced visually.
+The viewport count remains visible without active filters and occupies a fixed
+layout slot. Pixel-based trackpad wheel gestures pan the map in both axes and
+do not scroll the surrounding page.
 
 ## Selection and custom content
 

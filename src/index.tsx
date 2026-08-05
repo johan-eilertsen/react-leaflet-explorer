@@ -357,7 +357,6 @@ export function MapExplorer({
     return [...places.values()];
   }, [visibleFeatures]);
   const selected = features.find((feature) => feature.properties.id === selectedId) ?? null;
-  const hasActiveFilter = query.length > 0 || type !== "all";
   const resultCount = viewportIds?.length ?? new Set(visibleFeatures.map((feature) => feature.properties.id)).size;
   const handleViewportChange = useCallback((ids: string[]) => {
     if (sameMapFeatureIds(viewportIdsRef.current, ids)) return;
@@ -410,11 +409,9 @@ export function MapExplorer({
                 onReset={reset}
                 labels={labels}
               />
-              {hasActiveFilter ? (
-                <span className="map-explorer__result-count" aria-live="polite">
-                  {resultCount} {labels.results}
-                </span>
-              ) : null}
+              <span className="map-explorer__result-count" aria-live="polite">
+                {resultCount} {labels.results}
+              </span>
             </div>
             {visiblePlaces.length === 0 ? <p className="map-explorer__status" role="status">{labels.noResults}</p> : null}
           </div>
@@ -527,7 +524,7 @@ export function MapCanvas({
           zoomDelta += pixelY;
           zoomPoint = map.mouseEventToContainerPoint(event);
           if (frame === null) frame = requestAnimationFrame(applyZoom);
-        } else if (event.deltaMode === WheelEvent.DOM_DELTA_PIXEL && Math.abs(pixelX) > Math.abs(pixelY)) {
+        } else if (event.deltaMode === WheelEvent.DOM_DELTA_PIXEL) {
           event.preventDefault(); event.stopPropagation();
           map.panBy([pixelX, pixelY], { animate: false });
         }
