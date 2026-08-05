@@ -66,6 +66,8 @@
 .map-explorer__icon { width: 1.1rem; height: 1.1rem; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .map-explorer__edit-handle { display: grid; place-items: center; }
 .map-explorer__edit-handle span { display: block; width: 12px; height: 12px; border: 2px solid var(--map-explorer-surface); border-radius: 999px; background: var(--map-explorer-selected); box-shadow: 0 1px 5px rgb(0 0 0 / .35); }
+.map-explorer__feature-label { pointer-events: none; padding: .14rem .34rem; border: 1px solid color-mix(in srgb, var(--map-explorer-foreground) 28%, transparent); border-radius: calc(var(--map-explorer-radius) - 2px); background: color-mix(in srgb, var(--map-explorer-surface) 90%, transparent); color: var(--map-explorer-foreground); box-shadow: 0 1px 5px rgb(0 0 0 / .16); font-size: .75rem; font-weight: 750; font-variant-numeric: tabular-nums; line-height: 1; }
+.map-explorer__feature-label::before { display: none; }
 @media (max-width: 639px) { .map-explorer__toolbar { grid-template-columns: 1fr auto; } .map-explorer__search { grid-column: 1 / -1; } .map-explorer__frame { min-height: 29rem; } .map-explorer__reset { padding-inline: .75rem; } }
 @media (min-width: 640px) { .map-explorer__frame { min-height: 40rem; } }
 @media (min-width: 1024px) { .map-explorer__frame { min-height: 48rem; } }

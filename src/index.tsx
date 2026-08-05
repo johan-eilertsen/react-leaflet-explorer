@@ -60,6 +60,7 @@ export type MapExplorerProps = {
   onVertexMove?: (featureId: string, vertexIndex: number, coordinate: [number, number]) => void;
   editableFeatureIds?: string[];
   pathOptions?: (feature: MapExplorerFeature, selected: boolean) => PathOptions;
+  mapLabel?: (feature: MapExplorerFeature) => string | null | undefined;
   filters?: MapExplorerFilter[];
   labels?: Partial<MapExplorerLabels>;
   bounds?: [[number, number], [number, number]];
@@ -89,6 +90,7 @@ export type MapCanvasProps = {
   onVertexMove?: (featureId: string, vertexIndex: number, coordinate: [number, number]) => void;
   editableFeatureIds?: string[];
   pathOptions: (feature: MapExplorerFeature, selected: boolean) => PathOptions;
+  mapLabel?: (feature: MapExplorerFeature) => string | null | undefined;
   bounds?: [[number, number], [number, number]];
   center?: [number, number];
   initialZoom?: number;
@@ -273,6 +275,7 @@ export function MapExplorer({
   onVertexMove,
   editableFeatureIds,
   pathOptions = defaultPathOptions,
+  mapLabel,
   filters,
   labels: labelsOverride,
   bounds,
@@ -323,6 +326,7 @@ export function MapExplorer({
         onVertexMove={onVertexMove}
         editableFeatureIds={editableFeatureIds}
         pathOptions={pathOptions}
+        mapLabel={mapLabel}
         bounds={bounds}
         center={center}
         initialZoom={initialZoom}
@@ -381,6 +385,7 @@ export function MapCanvas({
   onVertexMove,
   editableFeatureIds = [],
   pathOptions,
+  mapLabel,
   bounds,
   center = defaultCenter,
   initialZoom = 13,
@@ -402,11 +407,11 @@ export function MapCanvas({
   const layersRef = useRef<LayerGroup | null>(null);
   const fittedRef = useRef(false);
   const previousSelectionRef = useRef<string | null>(null);
-  const callbacksRef = useRef({ onSelect, onViewportChange, onVertexMove, pathOptions });
+  const callbacksRef = useRef({ onSelect, onViewportChange, onVertexMove, pathOptions, mapLabel });
   const [ready, setReady] = useState(false);
   const [nativeFullscreen, setNativeFullscreen] = useState(false);
   const [fallbackFullscreen, setFallbackFullscreen] = useState(false);
-  callbacksRef.current = { onSelect, onViewportChange, onVertexMove, pathOptions };
+  callbacksRef.current = { onSelect, onViewportChange, onVertexMove, pathOptions, mapLabel };
   const fullscreen = nativeFullscreen || fallbackFullscreen;
   const centerLatitude = center[0];
   const centerLongitude = center[1];
@@ -492,6 +497,22 @@ export function MapCanvas({
         layer.bindTooltip(feature.properties.label, { sticky: true });
         layer.on("click", () => callbacksRef.current.onSelect(feature.properties.id));
         layer.addTo(group);
+        const mapLabel = callbacksRef.current.mapLabel?.(feature)?.trim();
+        if (mapLabel) {
+          const labelBounds = layer.getBounds();
+          if (labelBounds.isValid()) {
+            L.tooltip({
+              permanent: true,
+              direction: "center",
+              className: "map-explorer__feature-label",
+              interactive: false,
+              opacity: 1,
+            })
+              .setLatLng(labelBounds.getCenter())
+              .setContent(mapLabel)
+              .addTo(group);
+          }
+        }
         if (editable.has(feature.properties.id) && feature.geometry.type === "Polygon") {
           feature.geometry.coordinates[0]?.slice(0, -1).forEach(([lng, lat], index) => {
             const marker = L.marker([lat, lng], { draggable: true, keyboard: true, title: `Move point ${index + 1} in ${feature.properties.label}`, icon: L.divIcon({ className: "map-explorer__edit-handle", html: "<span></span>", iconSize: [20, 20], iconAnchor: [10, 10] }) });

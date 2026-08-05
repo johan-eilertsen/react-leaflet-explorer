@@ -105,6 +105,19 @@ kept inside the component tree, so a locally scoped theme applies to it too.
 Use `pathOptions` when geometry needs more than token changes. The default
 outline is one pixel, or two pixels for the selected feature.
 
+## Optional map labels
+
+Use `mapLabel` for short, always-visible labels that belong directly on the
+geometry, such as reference numbers in an administration map. Public maps can
+omit it and keep the same explorer behavior without internal metadata.
+
+```tsx
+<MapExplorer
+  features={places}
+  mapLabel={(feature) => String(feature.properties.number ?? "") || null}
+/>
+```
+
 ## Input behavior
 
 - A vertical mouse-wheel or trackpad gesture keeps scrolling the page.
