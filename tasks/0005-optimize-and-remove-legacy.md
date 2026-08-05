@@ -1,6 +1,6 @@
 # 0005 - Optimaliser pakken og fjern legacy
 
-Status: READY_FOR_QC
+Status: DONE
 Owner: codex
 Created: 2026-08-05
 Updated: 2026-08-05
@@ -79,4 +79,14 @@ godkjente kartopplevelsen eller bryte aktive konsumenter.
 - `npm run check`: 14/14 tester og TypeScript-bygg består.
 - `npm pack --dry-run` og `git diff --check` består.
 - Lokalt pakket `0.2.0` består Hysvær lint, build, places:check og map:check.
-- Gjenstår før DONE: npm-publisering, staging-deploy og rendret QA.
+- `react-leaflet-explorer@0.2.0` er publisert via Trusted Publishing.
+- Hysvær staging bruker eksakt `0.2.0` i app-commit `2297563` og deployment
+  `dpl_DoDqsAMcbDaoUyTr3UMaXYQeSmvM`.
+- Rendret staging-QA bekrefter 732/732 bevarte DOM-lag og null child-list-
+  mutasjoner ved valg, umiddelbar trackpad-pan uten dokumentscroll, 2 treff for
+  søket «Nordøya», full gjenoppretting til 732 lag ved reset, én hover-tooltip
+  og ingen konsollfeil.
+- Produktinnholdsport: ingen synlig tekst ble endret; desktopflaten er uendret,
+  og mobil-CSS ble ikke berørt utover fjerning av en ubrukt selektor.
+- Publish-workflowen bruker nå `actions/checkout@v7` og `actions/setup-node@v7`
+  i stedet for den utfasende Node 20-baserte v4-linjen.

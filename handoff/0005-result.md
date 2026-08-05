@@ -1,6 +1,6 @@
 # 0005 - Resultat
 
-Status: READY_FOR_QC
+Status: DONE
 
 ## Resultat
 
@@ -23,6 +23,10 @@ og normaliserer søkedata én gang. Legacy-eksporter og død CSS er fjernet.
 - pack dry-run og diff-check
 - Hysvær lint, build og begge kartdatakontroller med lokal tarball
 
-## Gjenstår
+## Release og QA
 
-Publiser `0.2.0`, oppdater Hysvær staging og kjør rendret QA før tasken lukkes.
+- `0.2.0` publisert på npm.
+- Hysvær staging: `2297563`, deployment `dpl_DoDqsAMcbDaoUyTr3UMaXYQeSmvM`.
+- Valg bevarte alle 732 eksisterende lag uten child-list-mutasjoner.
+- Søk, reset, tooltip, trackpad-pan og konsollkontroll består.
+- Produksjon er urørt.
