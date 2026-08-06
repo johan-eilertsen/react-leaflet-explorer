@@ -16,9 +16,9 @@ import {
   cancelTooltipClose,
   directGesturePanOptions,
   getPresenceTransition,
+  getSelectionPanOptions,
   scheduleTooltipClose,
   selectedOverlayDurationMs,
-  selectionPanOptions,
 } from "./motion.js";
 import { buildMapSearchIndex, collectVisibleFeatureIds, filterMapSearchIndex, reconcileMapEntries, sameMapFeatureIds, updateSelectedEntries } from "./internals.js";
 
@@ -786,7 +786,8 @@ export function MapCanvas({
       }
       if (selectedBounds.isValid() && !map.getBounds().intersects(selectedBounds)) {
         map.stop();
-        map.panTo(selectedBounds.getCenter(), selectionPanOptions);
+        const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        map.panTo(selectedBounds.getCenter(), getSelectionPanOptions(prefersReducedMotion));
       }
     }
     previousSelectionRef.current = selectedId;

@@ -3,6 +3,7 @@ import {
   cancelTooltipClose,
   directGesturePanOptions,
   getPresenceTransition,
+  getSelectionPanOptions,
   scheduleTooltipClose,
   selectionPanOptions,
   tooltipFadeDurationMs,
@@ -24,6 +25,8 @@ describe("map motion", () => {
       easeLinearity: 0.25,
       noMoveStart: true,
     });
+    expect(getSelectionPanOptions(false)).toBe(selectionPanOptions);
+    expect(getSelectionPanOptions(true)).toEqual({ animate: false });
   });
 
   it("cancels a pending tooltip close when a new hover starts", () => {

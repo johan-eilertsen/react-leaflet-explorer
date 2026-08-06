@@ -122,9 +122,10 @@ kept inside the component tree, so a locally scoped theme applies to it too.
 }
 ```
 
-Motion variables can be overridden with the rest of the theme. The component
-removes spatial transforms for `prefers-reduced-motion` while preserving short
-opacity and color feedback.
+Motion variables can be overridden with the rest of the theme. For
+`prefers-reduced-motion`, the component removes spatial transforms and
+programmatic selection panning while preserving short opacity and color
+feedback.
 
 Use `pathOptions` when geometry needs more than token changes. The default
 outline is one pixel, or two pixels for the selected feature.

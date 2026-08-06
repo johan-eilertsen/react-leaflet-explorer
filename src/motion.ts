@@ -12,6 +12,10 @@ export const selectionPanOptions = {
   noMoveStart: true,
 } as const satisfies PanOptions;
 
+export function getSelectionPanOptions(prefersReducedMotion: boolean): PanOptions {
+  return prefersReducedMotion ? { animate: false } : selectionPanOptions;
+}
+
 export function getPresenceTransition(previousPresent: boolean, nextPresent: boolean) {
   if (previousPresent === nextPresent) return null;
   return nextPresent ? "enter" : "exit";
