@@ -1,6 +1,6 @@
 # 005 — Stopp programstyrt panorering ved redusert bevegelse
 
-- **Status**: TODO
+- **Status**: DONE
 - **Commit**: 01b9cdf
 - **Severity**: MEDIUM
 - **Category**: Accessibility
@@ -61,3 +61,7 @@ den eksisterende 200 ms-kontrakten. Direkte gester forblir umiddelbare.
 - **Done when**: JavaScript-pan respekterer systempreferansen, og begge grener
   er dekket av test.
 
+## Result
+
+Implementert i `0.2.1`. En ren options-funksjon dekker begge motion-grener i
+test, og `MapCanvas` leser systempreferansen ved hvert programstyrte valg.

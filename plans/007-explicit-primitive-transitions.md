@@ -1,6 +1,6 @@
 # 007 — Avgrens primitive-overganger eksplisitt
 
-- **Status**: TODO
+- **Status**: DONE
 - **Commit**: 2297563
 - **Severity**: MEDIUM
 - **Category**: Performance / cohesion
@@ -55,3 +55,8 @@ Behold eksisterende hover-, fokus-, aktiv- og disabled-tilstander.
   blir interpolert.
 - **Done when**: Alle tre primitives bruker eksplisitte egenskapslister.
 
+## Result
+
+Implementert i Hysvær commit `8583375`. Rendret QA viser eksplisitte
+transition-properties på Meny-knappen og kartkontrollene; repo-søket gir ingen
+`transition-all`.

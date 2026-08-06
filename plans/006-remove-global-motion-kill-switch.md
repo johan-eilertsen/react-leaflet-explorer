@@ -1,6 +1,6 @@
 # 006 — Fjern appens globale motion-bryter
 
-- **Status**: TODO
+- **Status**: DONE
 - **Commit**: 2297563
 - **Severity**: MEDIUM
 - **Category**: Accessibility / cohesion
@@ -53,3 +53,8 @@ press-feedback.
   romlig transform, mens korte opacity- og fargeoverganger fortsatt virker.
 - **Done when**: Appen overstyrer ikke lenger komponentenes motion-kontrakter.
 
+## Result
+
+Implementert i Hysvær commit `8583375`. Den globale bryteren er fjernet.
+Romlig app-motion har målrettede `motion-reduce`-varianter, mens kartpakken
+beholder korte opacity- og fargeoverganger.
