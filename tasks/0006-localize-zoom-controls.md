@@ -1,6 +1,6 @@
 # 0006 - Localize zoom controls
 
-Status: IN_PROGRESS
+Status: DONE
 Owner: Codex
 Project: react-leaflet-explorer
 Created: 2026-08-10
@@ -32,4 +32,10 @@ Let applications translate the accessible name of the zoom control group through
 
 ## Result
 
-In progress. Release evidence will be recorded after publication.
+Published `react-leaflet-explorer@0.2.2` from reviewed commit `8939344ef5bd3e5aab7ce8d682bff645a1deb167` through GitHub Actions run `31399921572`.
+
+- The regression test failed against the former hardcoded markup before the fix was restored.
+- `npm run check` passed with 15 tests and a TypeScript build.
+- `npm pack --dry-run` included only the declared package files.
+- Independent review found 0 blockers, 0 majors, and 0 minors.
+- npm reports `latest=0.2.2` and integrity `sha512-kRC9Agw12/+jW3NUvicXCEQaSwBlgiulVPunWn4tgBVcex47xPqgkI4w9e2+TkXn+NlooHRs6JnOHIMcngNTAg==`.
