@@ -135,4 +135,24 @@ describe("MapExplorer", () => {
     expect(markup).toContain("Myrøya");
     expect(markup).toContain("map-explorer__selected-value");
   });
+
+  it("names the zoom control group with its default or an overridden label", () => {
+    const defaultMarkup = renderToStaticMarkup(
+      <MapExplorer features={features} />,
+    );
+    const localizedMarkup = renderToStaticMarkup(
+      <MapExplorer
+        features={features}
+        labels={{ zoomControls: "Zoom i kartet" }}
+      />,
+    );
+
+    expect(defaultMarkup).toContain(
+      'class="map-explorer__zoom" role="group" aria-label="Zoom controls"',
+    );
+    expect(localizedMarkup).toContain(
+      'class="map-explorer__zoom" role="group" aria-label="Zoom i kartet"',
+    );
+    expect(localizedMarkup).not.toContain('aria-label="Zoom controls"');
+  });
 });

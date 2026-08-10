@@ -1,6 +1,6 @@
 {
   "name": "react-leaflet-explorer",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "An opinionated, accessible React map explorer with search, filters, trackpad and touch support",
   "license": "MIT",
   "repository": {

@@ -47,6 +47,7 @@ export type MapExplorerLabels = {
   noResults: string;
   fullscreen: string;
   exitFullscreen: string;
+  zoomControls: string;
   zoomIn: string;
   zoomOut: string;
   selectedPlace: string;
@@ -134,6 +135,7 @@ const defaultLabels: MapExplorerLabels = {
   noResults: "No places match your search.",
   fullscreen: "Open map in fullscreen",
   exitFullscreen: "Exit fullscreen",
+  zoomControls: "Zoom controls",
   zoomIn: "Zoom in",
   zoomOut: "Zoom out",
   selectedPlace: "Selected place",
@@ -493,7 +495,11 @@ export function MapExplorer({
         renderControls={(actions) => (
           <>
             <button type="button" className="map-explorer__map-button map-explorer__fullscreen" onClick={() => void actions.toggleFullscreen()} aria-label={actions.fullscreen ? labels.exitFullscreen : labels.fullscreen} title={actions.fullscreen ? labels.exitFullscreen : labels.fullscreen}><Icon name={actions.fullscreen ? "collapse" : "expand"} /></button>
-            <div className="map-explorer__zoom" aria-label="Zoom controls">
+            <div
+              className="map-explorer__zoom"
+              role="group"
+              aria-label={labels.zoomControls}
+            >
               <button type="button" onClick={actions.zoomIn} aria-label={labels.zoomIn} title={labels.zoomIn}><Icon name="plus" /></button>
               <button type="button" onClick={actions.zoomOut} aria-label={labels.zoomOut} title={labels.zoomOut}><Icon name="minus" /></button>
             </div>

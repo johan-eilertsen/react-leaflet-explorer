@@ -31,6 +31,7 @@ export function PlacesMap() {
         filter: "Filter by type",
         allTypes: "All places",
         reset: "Reset",
+        zoomControls: "Map zoom controls",
       }}
       onSelect={(id) => console.log(id)}
     />
