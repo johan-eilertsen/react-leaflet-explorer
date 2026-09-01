@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MapExplorer, type MapExplorerFeature } from "./index.js";
-import { buildMapSearchIndex, collectVisibleFeatureIds, filterMapSearchIndex, reconcileMapEntries, sameMapFeatureIds, uniqueEntriesByKey, updateSelectedEntries } from "./internals.js";
+import { buildMapSearchIndex, collectVisibleFeatureIds, filterMapSearchIndex, reconcileKeyedEntries, reconcileMapEntries, sameMapFeatureIds, uniqueEntriesByKey, updateSelectedEntries } from "./internals.js";
 
 const features = [
   {
@@ -93,6 +93,23 @@ describe("uniqueEntriesByKey", () => {
       { id: "one", part: 1 },
       { id: "two", part: 1 },
     ]);
+  });
+});
+
+describe("reconcileKeyedEntries", () => {
+  it("updates one logical label instead of creating a duplicate when feature objects change", () => {
+    const registry = new Map<string, { text: string }>();
+    const create = vi.fn((entry: { id: string; text: string }) => ({ text: entry.text }));
+    const update = vi.fn((label: { text: string }, entry: { text: string }) => { label.text = entry.text; });
+    const remove = vi.fn();
+
+    reconcileKeyedEntries(registry, [{ id: "one", text: "First" }], (entry) => entry.id, create, update, remove);
+    reconcileKeyedEntries(registry, [{ id: "one", text: "Updated" }], (entry) => entry.id, create, update, remove);
+
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(remove).not.toHaveBeenCalled();
+    expect(registry.get("one")?.text).toBe("Updated");
   });
 });
 

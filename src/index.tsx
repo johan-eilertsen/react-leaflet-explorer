@@ -25,7 +25,7 @@ import {
   scheduleTooltipClose,
   selectedOverlayDurationMs,
 } from "./motion.js";
-import { buildMapSearchIndex, collectVisibleFeatureIds, filterMapSearchIndex, reconcileMapEntries, sameMapFeatureIds, uniqueEntriesByKey, updateSelectedEntries } from "./internals.js";
+import { buildMapSearchIndex, collectVisibleFeatureIds, filterMapSearchIndex, reconcileKeyedEntries, reconcileMapEntries, sameMapFeatureIds, uniqueEntriesByKey, updateSelectedEntries } from "./internals.js";
 
 const FeatureTooltipVisibilityContext = createContext(true);
 
@@ -132,7 +132,6 @@ type FeatureLayerEntry = {
   feature: MapExplorerFeature;
   layer: LeafletGeoJSON;
   bounds: LatLngBounds;
-  label: Tooltip | null;
   editMarkers: Marker[];
 };
 
@@ -564,6 +563,7 @@ export function MapCanvas({
   const mapRef = useRef<LeafletMap | null>(null);
   const leafletRef = useRef<typeof import("leaflet") | null>(null);
   const featureLayersRef = useRef(new Map<MapExplorerFeature, FeatureLayerEntry>());
+  const labelLayersRef = useRef(new Map<string, Tooltip>());
   const currentFeaturesRef = useRef(features);
   const hoverTooltipRef = useRef<Tooltip | null>(null);
   const hoveredFeatureRef = useRef<MapExplorerFeature | null>(null);
@@ -571,7 +571,6 @@ export function MapCanvas({
   const tooltipFrameRef = useRef<number | null>(null);
   const viewportIdsRef = useRef<string[] | null>(null);
   const invalidateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const labelRendererRef = useRef(mapLabel);
   const selectedIdRef = useRef(selectedId);
   const styledSelectionRef = useRef<string | null>(null);
   const pathOptionsRef = useRef(pathOptions);
@@ -674,6 +673,7 @@ export function MapCanvas({
       if (tooltipFrameRef.current !== null) cancelAnimationFrame(tooltipFrameRef.current);
       tooltipFrameRef.current = null;
       featureLayersRef.current.clear();
+      labelLayersRef.current.clear();
       mapRef.current?.stop();
       mapRef.current?.remove();
       mapRef.current = null;
@@ -741,7 +741,7 @@ export function MapCanvas({
       });
       layer.on("click", () => callbacksRef.current.onSelect(feature.properties.id));
       layer.addTo(map);
-      return { feature, layer, bounds: layer.getBounds(), label: null, editMarkers: [] };
+      return { feature, layer, bounds: layer.getBounds(), editMarkers: [] };
     }, (entry) => {
       if (hoveredFeatureRef.current === entry.feature) {
         hoveredFeatureRef.current = null;
@@ -751,7 +751,6 @@ export function MapCanvas({
         const tooltip = hoverTooltipRef.current;
         if (tooltip && map.hasLayer(tooltip)) map.removeLayer(tooltip);
       }
-      entry.label?.remove();
       for (const marker of entry.editMarkers) marker.remove();
       entry.layer.remove();
     });
@@ -788,29 +787,20 @@ export function MapCanvas({
     const L = leafletRef.current;
     const map = mapRef.current;
     if (!ready || !L || !map) return;
-    const rendererChanged = labelRendererRef.current !== mapLabel;
-    labelRendererRef.current = mapLabel;
     const candidates = [...featureLayersRef.current.values()].flatMap((entry) => {
       const text = mapLabel?.(entry.feature)?.trim();
       return text && entry.bounds.isValid() ? [{ entry, text }] : [];
     });
     const labels = uniqueEntriesByKey(candidates, ({ entry }) => entry.feature.properties.id);
-    const labeledEntries = new Set(labels.map(({ entry }) => entry));
-    for (const entry of featureLayersRef.current.values()) {
-      if (labeledEntries.has(entry)) continue;
-      entry.label?.remove();
-      entry.label = null;
-    }
-    for (const { entry, text } of labels) {
-      if (rendererChanged) {
-        entry.label?.remove();
-        entry.label = null;
-      } else if (entry.label) {
-        continue;
-      }
-      entry.label = L.tooltip({ permanent: true, direction: "center", className: "map-explorer__feature-label", interactive: false, opacity: 1 })
-        .setLatLng(entry.bounds.getCenter()).setContent(text).addTo(map);
-    }
+    reconcileKeyedEntries(
+      labelLayersRef.current,
+      labels,
+      ({ entry }) => entry.feature.properties.id,
+      ({ entry, text }) => L.tooltip({ permanent: true, direction: "center", className: "map-explorer__feature-label", interactive: false, opacity: 1 })
+        .setLatLng(entry.bounds.getCenter()).setContent(text).addTo(map),
+      (label, { entry, text }) => { label.setLatLng(entry.bounds.getCenter()).setContent(text); },
+      (label) => { label.remove(); },
+    );
   }, [features, mapLabel, ready]);
 
   useEffect(() => {
