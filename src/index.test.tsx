@@ -136,6 +136,51 @@ describe("MapExplorer", () => {
     expect(markup).toContain("map-explorer__selected-value");
   });
 
+  it("keeps map controls but removes name-based surfaces in browse mode", () => {
+    const markup = renderToStaticMarkup(
+      <MapExplorer
+        mode="browse"
+        features={features}
+        defaultSelectedId="one"
+        selectedActions={<button type="button">Open named place</button>}
+        ariaLabel="Map objects"
+      />,
+    );
+
+    expect(markup).toContain('role="application" aria-label="Map objects" tabindex="0"');
+    expect(markup).toContain("Open map in fullscreen");
+    expect(markup).toContain("Zoom in");
+    expect(markup).toContain("Zoom out");
+    expect(markup).not.toContain('role="combobox"');
+    expect(markup).not.toContain("map-explorer__toolbar-region");
+    expect(markup).not.toContain("map-explorer__result-count");
+    expect(markup).not.toContain("map-explorer__selected");
+    expect(markup).not.toContain("Open named place");
+    expect(markup).not.toContain("Myrøya");
+  });
+
+  it("renders explicit name-free selected content in browse mode", () => {
+    const renderSelected = vi.fn((feature: MapExplorerFeature) => (
+      <aside aria-label="Selected map object">{feature.properties.typeLabel}</aside>
+    ));
+    const markup = renderToStaticMarkup(
+      <MapExplorer
+        mode="browse"
+        features={features}
+        defaultSelectedId="one"
+        renderSelected={renderSelected}
+      />,
+    );
+
+    expect(renderSelected).toHaveBeenCalledWith(
+      features[0],
+      { clearSelection: expect.any(Function) },
+    );
+    expect(markup).toContain('aria-label="Selected map object"');
+    expect(markup).toContain("Island");
+    expect(markup).not.toContain("Myrøya");
+  });
+
   it("names the zoom control group with its default or an overridden label", () => {
     const defaultMarkup = renderToStaticMarkup(
       <MapExplorer features={features} />,

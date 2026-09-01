@@ -4,7 +4,9 @@ import { Combobox } from "@base-ui/react/combobox";
 import type { Feature, Geometry } from "geojson";
 import type { GeoJSON as LeafletGeoJSON, LatLngBounds, Map as LeafletMap, Marker, PathOptions, Tooltip } from "leaflet";
 import {
+  createContext,
   useCallback,
+  useContext,
   useEffect,
   useMemo,
   useRef,
@@ -21,6 +23,8 @@ import {
   selectedOverlayDurationMs,
 } from "./motion.js";
 import { buildMapSearchIndex, collectVisibleFeatureIds, filterMapSearchIndex, reconcileMapEntries, sameMapFeatureIds, updateSelectedEntries } from "./internals.js";
+
+const FeatureTooltipVisibilityContext = createContext(true);
 
 export type MapExplorerFeature = Feature<Geometry, {
   id: string;
@@ -61,6 +65,7 @@ export type MapExplorerRenderSelected = (
 
 export type MapExplorerProps = {
   features: MapExplorerFeature[];
+  mode?: "explore" | "browse";
   tileUrl?: string;
   attribution?: string;
   ariaLabel?: string;
@@ -374,8 +379,20 @@ function ExplorerCombobox({
   );
 }
 
+function MapExplorerCanvas({
+  showFeatureTooltips,
+  ...props
+}: MapCanvasProps & { showFeatureTooltips: boolean }) {
+  return (
+    <FeatureTooltipVisibilityContext.Provider value={showFeatureTooltips}>
+      <MapCanvas {...props} />
+    </FeatureTooltipVisibilityContext.Provider>
+  );
+}
+
 export function MapExplorer({
   features,
+  mode = "explore",
   tileUrl = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
   attribution = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
   ariaLabel = "Interactive map",
@@ -401,6 +418,7 @@ export function MapExplorer({
   selectedActions,
 }: MapExplorerProps) {
   const labels = { ...defaultLabels, ...labelsOverride };
+  const browse = mode === "browse";
   const [internalSelectedId, setInternalSelectedId] = useState(defaultSelectedId);
   const selectedId = controlledSelectedId === undefined ? internalSelectedId : controlledSelectedId;
   const [query, setQuery] = useState("");
@@ -441,8 +459,9 @@ export function MapExplorer({
 
   return (
     <section className={`map-explorer ${className ?? ""}`} style={style} aria-label={ariaLabel}>
-      <MapCanvas
-        features={visibleFeatures}
+      <MapExplorerCanvas
+        showFeatureTooltips={!browse}
+        features={browse ? features : visibleFeatures}
         selectedId={selectedId}
         onSelect={setSelected}
         onViewportChange={handleViewportChange}
@@ -459,7 +478,7 @@ export function MapExplorer({
         tileUrl={tileUrl}
         attribution={attribution}
         ariaLabel={ariaLabel}
-        topOverlay={(
+        topOverlay={!browse ? (
           <div className="map-explorer__toolbar-region">
             <div className="map-explorer__toolbar">
               <ExplorerCombobox
@@ -480,9 +499,9 @@ export function MapExplorer({
             </div>
             {visiblePlaces.length === 0 ? <p className="map-explorer__status" role="status">{labels.noResults}</p> : null}
           </div>
-        )}
+        ) : null}
         selectedOverlay={selected ? (
-          renderSelected ? renderSelected(selected, { clearSelection: () => setSelected(null) }) : (
+          renderSelected ? renderSelected(selected, { clearSelection: () => setSelected(null) }) : !browse ? (
             <aside className="map-explorer__selected" aria-label={labels.selectedPlace}>
               <button type="button" className="map-explorer__selected-close" onClick={() => setSelected(null)} aria-label={`Close ${selected.properties.label}`}><Icon name="close" /></button>
               <p className="map-explorer__eyebrow">{selected.properties.typeLabel ?? selected.properties.type}</p>
@@ -490,7 +509,7 @@ export function MapExplorer({
               {selected.properties.description ? <p>{selected.properties.description}</p> : null}
               {typeof selectedActions === "function" ? selectedActions(selected) : selectedActions}
             </aside>
-          )
+          ) : null
         ) : null}
         renderControls={(actions) => (
           <>
@@ -534,6 +553,7 @@ export function MapCanvas({
   topOverlay,
   renderControls,
 }: MapCanvasProps) {
+  const showFeatureTooltips = useContext(FeatureTooltipVisibilityContext);
   const surfaceRef = useRef<HTMLDivElement>(null);
   const mapElementRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<LeafletMap | null>(null);
@@ -550,6 +570,7 @@ export function MapCanvas({
   const selectedIdRef = useRef(selectedId);
   const styledSelectionRef = useRef<string | null>(null);
   const pathOptionsRef = useRef(pathOptions);
+  const showFeatureTooltipsRef = useRef(showFeatureTooltips);
   const fittedRef = useRef(false);
   const previousSelectionRef = useRef<string | null>(null);
   const callbacksRef = useRef({ onSelect, onViewportChange, onVertexMove, pathOptions, mapLabel });
@@ -559,6 +580,7 @@ export function MapCanvas({
   callbacksRef.current = { onSelect, onViewportChange, onVertexMove, pathOptions, mapLabel };
   currentFeaturesRef.current = features;
   selectedIdRef.current = selectedId;
+  showFeatureTooltipsRef.current = showFeatureTooltips;
   const fullscreen = nativeFullscreen || fallbackFullscreen;
   const reportsViewport = onViewportChange !== undefined;
   const editableFeatureSignature = [...new Set(editableFeatureIds)].sort().join("\u0000");
@@ -670,6 +692,7 @@ export function MapCanvas({
         pointToLayer: (_point, latlng) => L.circleMarker(latlng, options),
       });
       layer.on("mouseover", (event) => {
+        if (!showFeatureTooltipsRef.current) return;
         const tooltip = hoverTooltipRef.current;
         if (!tooltip) return;
         closeTooltipTimerRef.current = cancelTooltipClose(closeTooltipTimerRef.current);
@@ -716,6 +739,17 @@ export function MapCanvas({
     });
     if (reportsViewport) reportViewport();
   }, [features, ready, reportViewport, reportsViewport]);
+
+  useEffect(() => {
+    if (showFeatureTooltips) return;
+    hoveredFeatureRef.current = null;
+    closeTooltipTimerRef.current = cancelTooltipClose(closeTooltipTimerRef.current);
+    if (tooltipFrameRef.current !== null) cancelAnimationFrame(tooltipFrameRef.current);
+    tooltipFrameRef.current = null;
+    const tooltip = hoverTooltipRef.current;
+    const map = mapRef.current;
+    if (tooltip && map?.hasLayer(tooltip)) map.removeLayer(tooltip);
+  }, [showFeatureTooltips]);
 
   useEffect(() => {
     if (!ready) return;

@@ -79,6 +79,29 @@ The viewport count remains visible without active filters and occupies a fixed
 layout slot. Pixel-based trackpad wheel gestures pan the map in both axes and
 do not scroll the surrounding page.
 
+## Browse without place names
+
+Use `mode="browse"` when visitors should select map objects directly without seeing place names. Browse mode removes search, type filters, the result count, hover labels and the built-in selected-place panel. It keeps selected geometry, `onSelect`, zoom, fullscreen, pan and pinch behavior.
+
+The `label` property is still required by the shared feature shape. Use a non-place identifier if the feature data must not contain a place name. Add name-free selected content with `renderSelected`:
+
+```tsx
+<MapExplorer
+  mode="browse"
+  ariaLabel="Map of islands and reefs"
+  features={mapObjects}
+  onSelect={(id) => console.log(id)}
+  renderSelected={(feature, { clearSelection }) => (
+    <aside aria-label="Selected map object">
+      <p>{feature.properties.typeLabel ?? feature.properties.type}</p>
+      <button type="button" onClick={clearSelection}>Close details</button>
+    </aside>
+  )}
+/>
+```
+
+The map and its zoom and fullscreen controls remain keyboard accessible. Leaflet geometry is selected by pointer click; browse mode does not add keyboard selection for individual unnamed objects.
+
 ## Selection and custom content
 
 The component can own selection with `defaultSelectedId`, or an application
