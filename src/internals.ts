@@ -28,6 +28,21 @@ export function reconcileMapEntries<TFeature extends object, TEntry>(
   }
 }
 
+export function uniqueEntriesByKey<TEntry, TKey>(
+  entries: Iterable<TEntry>,
+  getKey: (entry: TEntry) => TKey,
+) {
+  const unique: TEntry[] = [];
+  const seen = new Set<TKey>();
+  for (const entry of entries) {
+    const key = getKey(entry);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(entry);
+  }
+  return unique;
+}
+
 export function collectVisibleFeatureIds(
   features: MapExplorerFeature[],
   intersects: (feature: MapExplorerFeature) => boolean,

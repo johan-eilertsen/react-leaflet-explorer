@@ -163,7 +163,8 @@ Double-click and pointer clicks on the built-in zoom controls use the shared
 240 ms map-zoom transition. Keyboard zoom, Ctrl + trackpad pinch, touch pinch
 and direct panning stay immediate. Low-level `MapCanvas` controls can use
 `zoomInImmediately` and `zoomOutImmediately` when a consumer renders its own
-keyboard-activated zoom buttons.
+keyboard-activated zoom buttons. The same motion fallbacks apply when
+`MapCanvas` is rendered without a surrounding `MapExplorer`.
 
 Use `pathOptions` when geometry needs more than token changes. The default
 outline is one pixel, or two pixels for the selected feature.
@@ -172,7 +173,9 @@ outline is one pixel, or two pixels for the selected feature.
 
 Use `mapLabel` for short, always-visible labels that belong directly on the
 geometry, such as reference numbers in an administration map. Public maps can
-omit it and keep the same explorer behavior without internal metadata.
+omit it and keep the same explorer behavior without internal metadata. One
+label is rendered per logical feature ID, including objects with multiple
+geometry parts.
 
 ```tsx
 <MapExplorer

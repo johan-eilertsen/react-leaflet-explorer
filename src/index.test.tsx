@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MapExplorer, type MapExplorerFeature } from "./index.js";
-import { buildMapSearchIndex, collectVisibleFeatureIds, filterMapSearchIndex, reconcileMapEntries, sameMapFeatureIds, updateSelectedEntries } from "./internals.js";
+import { buildMapSearchIndex, collectVisibleFeatureIds, filterMapSearchIndex, reconcileMapEntries, sameMapFeatureIds, uniqueEntriesByKey, updateSelectedEntries } from "./internals.js";
 
 const features = [
   {
@@ -78,6 +78,21 @@ describe("reconcileMapEntries", () => {
     reconcileMapEntries(registry, [features[1], added], (feature) => ({ key: (feature as MapExplorerFeature).properties.id }), (entry) => removed.push(entry.key));
     expect(registry.get(features[1])).toBe(retained);
     expect(removed).toEqual(["one"]);
+  });
+});
+
+describe("uniqueEntriesByKey", () => {
+  it("keeps one permanent label for multipart features with the same logical id", () => {
+    const entries = [
+      { id: "one", part: 1 },
+      { id: "one", part: 2 },
+      { id: "two", part: 1 },
+    ];
+
+    expect(uniqueEntriesByKey(entries, (entry) => entry.id)).toEqual([
+      { id: "one", part: 1 },
+      { id: "two", part: 1 },
+    ]);
   });
 });
 

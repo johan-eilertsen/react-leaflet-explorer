@@ -25,7 +25,7 @@ import {
   scheduleTooltipClose,
   selectedOverlayDurationMs,
 } from "./motion.js";
-import { buildMapSearchIndex, collectVisibleFeatureIds, filterMapSearchIndex, reconcileMapEntries, sameMapFeatureIds, updateSelectedEntries } from "./internals.js";
+import { buildMapSearchIndex, collectVisibleFeatureIds, filterMapSearchIndex, reconcileMapEntries, sameMapFeatureIds, uniqueEntriesByKey, updateSelectedEntries } from "./internals.js";
 
 const FeatureTooltipVisibilityContext = createContext(true);
 
@@ -790,15 +790,24 @@ export function MapCanvas({
     if (!ready || !L || !map) return;
     const rendererChanged = labelRendererRef.current !== mapLabel;
     labelRendererRef.current = mapLabel;
+    const candidates = [...featureLayersRef.current.values()].flatMap((entry) => {
+      const text = mapLabel?.(entry.feature)?.trim();
+      return text && entry.bounds.isValid() ? [{ entry, text }] : [];
+    });
+    const labels = uniqueEntriesByKey(candidates, ({ entry }) => entry.feature.properties.id);
+    const labeledEntries = new Set(labels.map(({ entry }) => entry));
     for (const entry of featureLayersRef.current.values()) {
+      if (labeledEntries.has(entry)) continue;
+      entry.label?.remove();
+      entry.label = null;
+    }
+    for (const { entry, text } of labels) {
       if (rendererChanged) {
         entry.label?.remove();
         entry.label = null;
       } else if (entry.label) {
         continue;
       }
-      const text = mapLabel?.(entry.feature)?.trim();
-      if (!text || !entry.bounds.isValid()) continue;
       entry.label = L.tooltip({ permanent: true, direction: "center", className: "map-explorer__feature-label", interactive: false, opacity: 1 })
         .setLatLng(entry.bounds.getCenter()).setContent(text).addTo(map);
     }
