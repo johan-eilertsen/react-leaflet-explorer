@@ -43,6 +43,27 @@ export function uniqueEntriesByKey<TEntry, TKey>(
   return unique;
 }
 
+export function reconcileKeyedEntries<TKey, TInput, TValue>(
+  registry: Map<TKey, TValue>,
+  inputs: TInput[],
+  getKey: (input: TInput) => TKey,
+  create: (input: TInput) => TValue,
+  update: (value: TValue, input: TInput) => void,
+  remove: (value: TValue) => void,
+) {
+  const desiredKeys = new Set(inputs.map(getKey));
+  for (const [key, value] of registry) {
+    if (desiredKeys.has(key)) continue;
+    remove(value);
+    registry.delete(key);
+  }
+  for (const input of inputs) {
+    const key = getKey(input);
+    if (registry.has(key)) update(registry.get(key) as TValue, input);
+    else registry.set(key, create(input));
+  }
+}
+
 export function collectVisibleFeatureIds(
   features: MapExplorerFeature[],
   intersects: (feature: MapExplorerFeature) => boolean,
