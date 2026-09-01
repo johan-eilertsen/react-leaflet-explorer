@@ -17,8 +17,11 @@ import {
 import {
   cancelTooltipClose,
   directGesturePanOptions,
+  getKeyboardZoomDelta,
+  getMapMotionOptions,
   getPresenceTransition,
   getSelectionPanOptions,
+  getZoomOptions,
   scheduleTooltipClose,
   selectedOverlayDurationMs,
 } from "./motion.js";
@@ -95,7 +98,9 @@ export type MapCanvasActions = {
   fullscreen: boolean;
   toggleFullscreen: () => Promise<void>;
   zoomIn: () => void;
+  zoomInImmediately: () => void;
   zoomOut: () => void;
+  zoomOutImmediately: () => void;
 };
 
 export type MapCanvasProps = {
@@ -519,8 +524,8 @@ export function MapExplorer({
               role="group"
               aria-label={labels.zoomControls}
             >
-              <button type="button" onClick={actions.zoomIn} aria-label={labels.zoomIn} title={labels.zoomIn}><Icon name="plus" /></button>
-              <button type="button" onClick={actions.zoomOut} aria-label={labels.zoomOut} title={labels.zoomOut}><Icon name="minus" /></button>
+              <button type="button" onClick={(event) => event.detail === 0 ? actions.zoomInImmediately() : actions.zoomIn()} aria-label={labels.zoomIn} title={labels.zoomIn}><Icon name="plus" /></button>
+              <button type="button" onClick={(event) => event.detail === 0 ? actions.zoomOutImmediately() : actions.zoomOut()} aria-label={labels.zoomOut} title={labels.zoomOut}><Icon name="minus" /></button>
             </div>
           </>
         )}
@@ -591,6 +596,7 @@ export function MapCanvas({
   useEffect(() => {
     let cancelled = false;
     let removeWheel: (() => void) | undefined;
+    let removeKeyboardZoom: (() => void) | undefined;
     let frame: number | null = null;
     const element = mapElementRef.current;
     if (!element || mapRef.current) return;
@@ -598,6 +604,8 @@ export function MapCanvas({
     void import("leaflet").then((module) => {
       if (cancelled || !mapElementRef.current) return;
       const L = module.default;
+      const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      const mapMotionOptions = getMapMotionOptions(prefersReducedMotion);
       const map = L.map(mapElementRef.current, {
         center: [centerLatitude, centerLongitude],
         zoom: initialZoom,
@@ -610,9 +618,7 @@ export function MapCanvas({
         doubleClickZoom: true,
         keyboard: true,
         zoomSnap: 0,
-        zoomAnimation: false,
-        fadeAnimation: false,
-        markerZoomAnimation: false,
+        ...mapMotionOptions,
       });
       mapRef.current = map;
       leafletRef.current = L;
@@ -646,11 +652,23 @@ export function MapCanvas({
       };
       element.addEventListener("wheel", handleWheel, { passive: false });
       removeWheel = () => element.removeEventListener("wheel", handleWheel);
+      const handleKeyboardZoom = (event: KeyboardEvent) => {
+        if (event.altKey || event.ctrlKey || event.metaKey) return;
+        const delta = getKeyboardZoomDelta(event.key);
+        if (delta === 0) return;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        map.stop();
+        map.setZoom(map.getZoom() + delta, getZoomOptions(prefersReducedMotion, true));
+      };
+      element.addEventListener("keydown", handleKeyboardZoom, { capture: true });
+      removeKeyboardZoom = () => element.removeEventListener("keydown", handleKeyboardZoom, { capture: true });
       setReady(true);
     });
     return () => {
       cancelled = true;
       removeWheel?.();
+      removeKeyboardZoom?.();
       if (frame !== null) cancelAnimationFrame(frame);
       closeTooltipTimerRef.current = cancelTooltipClose(closeTooltipTimerRef.current);
       if (tooltipFrameRef.current !== null) cancelAnimationFrame(tooltipFrameRef.current);
@@ -872,7 +890,24 @@ export function MapCanvas({
     if (fallbackFullscreen) { setFallbackFullscreen(false); return; }
     try { await surfaceRef.current?.requestFullscreen(); } catch { setFallbackFullscreen(true); }
   }, [fallbackFullscreen]);
-  const actions = useMemo<MapCanvasActions>(() => ({ fullscreen, toggleFullscreen, zoomIn: () => mapRef.current?.zoomIn(), zoomOut: () => mapRef.current?.zoomOut() }), [fullscreen, toggleFullscreen]);
+  const actions = useMemo<MapCanvasActions>(() => {
+    const zoom = (delta: 1 | -1, initiatedByKeyboard: boolean) => {
+      const map = mapRef.current;
+      if (!map) return;
+      const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      const options = getZoomOptions(prefersReducedMotion, initiatedByKeyboard);
+      if (delta === 1) map.zoomIn(1, options);
+      else map.zoomOut(1, options);
+    };
+    return {
+      fullscreen,
+      toggleFullscreen,
+      zoomIn: () => zoom(1, false),
+      zoomInImmediately: () => zoom(1, true),
+      zoomOut: () => zoom(-1, false),
+      zoomOutImmediately: () => zoom(-1, true),
+    };
+  }, [fullscreen, toggleFullscreen]);
 
   return (
     <div ref={surfaceRef} className={`map-explorer__surface ${fullscreen ? "map-explorer__surface--fullscreen" : ""} ${className ?? ""}`}>
