@@ -23,7 +23,7 @@ npm install react-leaflet-explorer leaflet
 Import the component and its complete base stylesheet once:
 
 ```tsx
-import { MapExplorer } from "react-leaflet-explorer";
+import { MapExplorer, MapSelectionPanel } from "react-leaflet-explorer";
 import "react-leaflet-explorer/styles.css";
 
 export function PlacesMap() {
@@ -92,10 +92,13 @@ The `label` property is still required by the shared feature shape. Use a non-pl
   features={mapObjects}
   onSelect={(id) => console.log(id)}
   renderSelected={(feature, { clearSelection }) => (
-    <aside aria-label="Selected map object">
+    <MapSelectionPanel
+      ariaLabel="Selected map object"
+      closeLabel="Close selected map object"
+      onClose={clearSelection}
+    >
       <p>{feature.properties.typeLabel ?? feature.properties.type}</p>
-      <button type="button" onClick={clearSelection}>Close details</button>
-    </aside>
+    </MapSelectionPanel>
   )}
 />
 ```
@@ -161,7 +164,9 @@ feedback.
 
 Double-click and pointer clicks on the built-in zoom controls use the shared
 240 ms map-zoom transition. Keyboard zoom, Ctrl + trackpad pinch, touch pinch
-and direct panning stay immediate. Low-level `MapCanvas` controls can use
+and direct panning stay immediate. The transform timing is active only while
+Leaflet is zooming, so geometry and tiles never trail each other during a pan.
+Low-level `MapCanvas` controls can use
 `zoomInImmediately` and `zoomOutImmediately` when a consumer renders its own
 keyboard-activated zoom buttons. The same motion fallbacks apply when
 `MapCanvas` is rendered without a surrounding `MapExplorer`.

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import { MapExplorer, type MapExplorerFeature } from "./index.js";
+import { MapExplorer, MapSelectionPanel, type MapExplorerFeature } from "./index.js";
 import { buildMapSearchIndex, collectVisibleFeatureIds, filterMapSearchIndex, reconcileKeyedEntries, reconcileMapEntries, sameMapFeatureIds, uniqueEntriesByKey, updateSelectedEntries } from "./internals.js";
 
 const features = [
@@ -138,6 +138,23 @@ describe("updateSelectedEntries", () => {
 });
 
 describe("MapExplorer", () => {
+  it("renders the shared selected panel with an icon-only close control", () => {
+    const markup = renderToStaticMarkup(
+      <MapSelectionPanel
+        ariaLabel="Selected map object"
+        closeLabel="Close selected map object"
+        onClose={() => undefined}
+      >
+        <h2>Map object</h2>
+      </MapSelectionPanel>,
+    );
+
+    expect(markup).toContain('class="map-explorer__selected"');
+    expect(markup).toContain('aria-label="Close selected map object"');
+    expect(markup).toContain('class="map-explorer__icon"');
+    expect(markup).not.toContain(">Close selected map object<");
+  });
+
   it("renders the complete controls and selected-place surface on first use", () => {
     const markup = renderToStaticMarkup(
       <MapExplorer features={features} defaultSelectedId="one" ariaLabel="Test map" />,

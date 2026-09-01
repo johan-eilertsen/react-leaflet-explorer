@@ -58,7 +58,16 @@ export type MapExplorerLabels = {
   zoomIn: string;
   zoomOut: string;
   selectedPlace: string;
+  closeSelected: string;
   results: string;
+};
+
+export type MapSelectionPanelProps = {
+  ariaLabel: string;
+  closeLabel: string;
+  onClose: () => void;
+  children: ReactNode;
+  className?: string;
 };
 
 export type MapExplorerRenderSelected = (
@@ -148,6 +157,7 @@ const defaultLabels: MapExplorerLabels = {
   zoomIn: "Zoom in",
   zoomOut: "Zoom out",
   selectedPlace: "Selected place",
+  closeSelected: "Close selected place",
   results: "results",
 };
 
@@ -174,6 +184,31 @@ function Icon({ name }: { name: "search" | "expand" | "collapse" | "plus" | "min
     close: <path d="m6 6 12 12M18 6 6 18" />,
   };
   return <svg aria-hidden="true" viewBox="0 0 24 24" className="map-explorer__icon">{paths[name]}</svg>;
+}
+
+export function MapSelectionPanel({
+  ariaLabel,
+  closeLabel,
+  onClose,
+  children,
+  className,
+}: MapSelectionPanelProps) {
+  return (
+    <aside
+      className={`map-explorer__selected${className ? ` ${className}` : ""}`}
+      aria-label={ariaLabel}
+    >
+      <button
+        type="button"
+        className="map-explorer__selected-close"
+        onClick={onClose}
+        aria-label={closeLabel}
+      >
+        <Icon name="close" />
+      </button>
+      {children}
+    </aside>
+  );
 }
 
 function SelectedOverlayPresence({ children }: { children: ReactNode }) {
@@ -506,13 +541,16 @@ export function MapExplorer({
         ) : null}
         selectedOverlay={selected ? (
           renderSelected ? renderSelected(selected, { clearSelection: () => setSelected(null) }) : !browse ? (
-            <aside className="map-explorer__selected" aria-label={labels.selectedPlace}>
-              <button type="button" className="map-explorer__selected-close" onClick={() => setSelected(null)} aria-label={`Close ${selected.properties.label}`}><Icon name="close" /></button>
+            <MapSelectionPanel
+              ariaLabel={labels.selectedPlace}
+              closeLabel={labels.closeSelected}
+              onClose={() => setSelected(null)}
+            >
               <p className="map-explorer__eyebrow">{selected.properties.typeLabel ?? selected.properties.type}</p>
               <h2>{selected.properties.label}</h2>
               {selected.properties.description ? <p>{selected.properties.description}</p> : null}
               {typeof selectedActions === "function" ? selectedActions(selected) : selectedActions}
-            </aside>
+            </MapSelectionPanel>
           ) : null
         ) : null}
         renderControls={(actions) => (
