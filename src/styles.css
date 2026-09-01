@@ -23,6 +23,8 @@
   --map-explorer-duration-tooltip: 150ms;
   --map-explorer-duration-geometry: 160ms;
   --map-explorer-duration-popup: 180ms;
+  --map-explorer-duration-map-tile-fade: 180ms;
+  --map-explorer-duration-map-zoom: 240ms;
   color: var(--map-explorer-foreground);
   font-family: inherit;
   width: 100%;
@@ -92,6 +94,8 @@
 .map-explorer__feature-label { pointer-events: none; padding: .14rem .34rem; border: 1px solid color-mix(in srgb, var(--map-explorer-foreground) 28%, transparent); border-radius: calc(var(--map-explorer-radius) - 2px); background: color-mix(in srgb, var(--map-explorer-surface) 90%, transparent); color: var(--map-explorer-foreground); box-shadow: 0 1px 5px rgb(0 0 0 / .16); font-size: .75rem; font-weight: 750; font-variant-numeric: tabular-nums; line-height: 1; }
 .map-explorer__feature-label::before { display: none; }
 .map-explorer .leaflet-interactive { transition: fill var(--map-explorer-duration-geometry) var(--map-explorer-ease-in-out), fill-opacity var(--map-explorer-duration-geometry) var(--map-explorer-ease-in-out), stroke var(--map-explorer-duration-geometry) var(--map-explorer-ease-in-out), stroke-opacity var(--map-explorer-duration-geometry) var(--map-explorer-ease-in-out), stroke-width var(--map-explorer-duration-geometry) var(--map-explorer-ease-in-out); }
+.map-explorer .leaflet-zoom-animated { transition: transform var(--map-explorer-duration-map-zoom) var(--map-explorer-ease-in-out); }
+.map-explorer .leaflet-fade-anim .leaflet-tile { transition: opacity var(--map-explorer-duration-map-tile-fade) var(--map-explorer-ease-out); }
 .map-explorer__hover-tooltip { opacity: 0 !important; transition: opacity var(--map-explorer-duration-tooltip) var(--map-explorer-ease-out); }
 .map-explorer__hover-tooltip--visible { opacity: 1 !important; }
 @media (pointer: fine) {
@@ -101,6 +105,7 @@
 @media (min-width: 640px) { .map-explorer__frame { min-height: 40rem; } }
 @media (min-width: 1024px) { .map-explorer__frame { min-height: 48rem; } }
 @media (prefers-reduced-motion: reduce) {
+  .map-explorer { --map-explorer-duration-map-tile-fade: 120ms; --map-explorer-duration-map-zoom: 0ms; }
   .map-explorer, .map-explorer * { scroll-behavior: auto !important; }
   .map-explorer__popup[data-starting-style], .map-explorer__popup[data-ending-style] { transform: scale(1); }
   .map-explorer__search-popup[data-starting-style], .map-explorer__search-popup[data-ending-style] { transform: translateX(-.72rem) scale(1); }

@@ -2,8 +2,14 @@ import { describe, expect, it, vi } from "vitest";
 import {
   cancelTooltipClose,
   directGesturePanOptions,
+  getKeyboardZoomDelta,
+  getMapMotionOptions,
   getPresenceTransition,
   getSelectionPanOptions,
+  getZoomOptions,
+  immediateZoomOptions,
+  mapTileFadeDurationMs,
+  mapZoomDurationMs,
   scheduleTooltipClose,
   selectionPanOptions,
   tooltipFadeDurationMs,
@@ -27,6 +33,32 @@ describe("map motion", () => {
     });
     expect(getSelectionPanOptions(false)).toBe(selectionPanOptions);
     expect(getSelectionPanOptions(true)).toEqual({ animate: false });
+  });
+
+  it("animates spatial pointer zoom while keeping keyboard and reduced motion immediate", () => {
+    expect(mapZoomDurationMs).toBe(240);
+    expect(mapTileFadeDurationMs).toBe(180);
+    expect(getMapMotionOptions(false)).toEqual({
+      fadeAnimation: true,
+      markerZoomAnimation: true,
+      zoomAnimation: true,
+    });
+    expect(getMapMotionOptions(true)).toEqual({
+      fadeAnimation: true,
+      markerZoomAnimation: false,
+      zoomAnimation: false,
+    });
+    expect(getZoomOptions(false, false)).toEqual({ animate: true });
+    expect(getZoomOptions(false, true)).toBe(immediateZoomOptions);
+    expect(getZoomOptions(true, false)).toBe(immediateZoomOptions);
+  });
+
+  it("recognizes only the keyboard keys that Leaflet uses for zoom", () => {
+    expect(getKeyboardZoomDelta("+")).toBe(1);
+    expect(getKeyboardZoomDelta("=")).toBe(1);
+    expect(getKeyboardZoomDelta("-")).toBe(-1);
+    expect(getKeyboardZoomDelta("_")).toBe(-1);
+    expect(getKeyboardZoomDelta("ArrowUp")).toBe(0);
   });
 
   it("cancels a pending tooltip close when a new hover starts", () => {
