@@ -8,6 +8,12 @@ The package contains no application data or product-specific styling. It uses
 semantic CSS variables, so multiple products can share the same behavior while
 using different themes.
 
+## Project management
+
+Active, generic package work belongs in this repository's GitHub Issues. Hysvær-specific product review and release work belongs to [the Hysvær project](https://github.com/johan-eilertsen/hysvaer/issues/1).
+
+Historical package tasks, plans, and handoffs are read-only under `docs/archive/project-management/`. The current Hysvær integration uses the published package; no package milestone is active merely because Hysvær still needs product approval.
+
 ## Install
 
 ```sh
