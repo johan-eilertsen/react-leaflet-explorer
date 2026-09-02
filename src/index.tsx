@@ -16,6 +16,7 @@ import {
 } from "react";
 import {
   cancelTooltipClose,
+  createContinuousZoomSession,
   directGesturePanOptions,
   getKeyboardZoomDelta,
   getMapMotionOptions,
@@ -24,6 +25,7 @@ import {
   getZoomOptions,
   scheduleTooltipClose,
   selectedOverlayDurationMs,
+  trackpadZoomIdleDurationMs,
 } from "./motion.js";
 import { buildMapSearchIndex, collectVisibleFeatureIds, filterMapSearchIndex, reconcileKeyedEntries, reconcileMapEntries, sameMapFeatureIds, uniqueEntriesByKey, updateSelectedEntries } from "./internals.js";
 
@@ -615,6 +617,8 @@ export function MapCanvas({
   const showFeatureTooltipsRef = useRef(showFeatureTooltips);
   const fittedRef = useRef(false);
   const previousSelectionRef = useRef<string | null>(null);
+  const continuousZoomRef = useRef<ReturnType<typeof createContinuousZoomSession> | null>(null);
+  const cancelContinuousZoomRef = useRef<(() => void) | null>(null);
   const callbacksRef = useRef({ onSelect, onViewportChange, onVertexMove, pathOptions, mapLabel });
   const [ready, setReady] = useState(false);
   const [nativeFullscreen, setNativeFullscreen] = useState(false);
@@ -635,6 +639,7 @@ export function MapCanvas({
     let removeWheel: (() => void) | undefined;
     let removeKeyboardZoom: (() => void) | undefined;
     let frame: number | null = null;
+    let zoomIdleTimer: ReturnType<typeof setTimeout> | null = null;
     const element = mapElementRef.current;
     if (!element || mapRef.current) return;
     setReady(false);
@@ -660,6 +665,8 @@ export function MapCanvas({
       mapRef.current = map;
       leafletRef.current = L;
       L.tileLayer(tileUrl, { attribution, maxZoom }).addTo(map);
+      const continuousZoom = createContinuousZoomSession(map);
+      continuousZoomRef.current = continuousZoom;
       hoverTooltipRef.current = L.tooltip({
         className: "map-explorer__hover-tooltip",
         direction: "top",
@@ -668,22 +675,40 @@ export function MapCanvas({
       });
       let zoomDelta = 0;
       let zoomPoint = L.point(0, 0);
+      const finishContinuousZoom = () => {
+        if (zoomIdleTimer) clearTimeout(zoomIdleTimer);
+        zoomIdleTimer = null;
+        continuousZoom.finish();
+      };
       const applyZoom = () => {
         const next = Math.max(minZoom, Math.min(maxZoom, map.getZoom() - zoomDelta * 0.012));
         frame = null; zoomDelta = 0;
-        map.setZoomAround(zoomPoint, next, { animate: false });
+        continuousZoom.move(zoomPoint, next);
+        if (continuousZoom.active) {
+          zoomIdleTimer = setTimeout(finishContinuousZoom, trackpadZoomIdleDurationMs);
+        }
       };
+      const cancelContinuousZoom = () => {
+        if (frame !== null) cancelAnimationFrame(frame);
+        frame = null;
+        zoomDelta = 0;
+        finishContinuousZoom();
+      };
+      cancelContinuousZoomRef.current = cancelContinuousZoom;
       const handleWheel = (event: WheelEvent) => {
         const unit = event.deltaMode === WheelEvent.DOM_DELTA_LINE ? 16 : event.deltaMode === WheelEvent.DOM_DELTA_PAGE ? element.clientHeight : 1;
         const pixelX = event.deltaX * unit;
         const pixelY = event.deltaY * unit;
         if (event.ctrlKey) {
           event.preventDefault(); event.stopPropagation();
+          if (zoomIdleTimer) clearTimeout(zoomIdleTimer);
+          zoomIdleTimer = null;
           zoomDelta += pixelY;
           zoomPoint = map.mouseEventToContainerPoint(event);
           if (frame === null) frame = requestAnimationFrame(applyZoom);
         } else if (event.deltaMode === WheelEvent.DOM_DELTA_PIXEL) {
           event.preventDefault(); event.stopPropagation();
+          cancelContinuousZoom();
           map.panBy([pixelX, pixelY], directGesturePanOptions);
         }
       };
@@ -695,6 +720,7 @@ export function MapCanvas({
         if (delta === 0) return;
         event.preventDefault();
         event.stopImmediatePropagation();
+        cancelContinuousZoom();
         map.stop();
         map.setZoom(map.getZoom() + delta, getZoomOptions(prefersReducedMotion, true));
       };
@@ -707,6 +733,8 @@ export function MapCanvas({
       removeWheel?.();
       removeKeyboardZoom?.();
       if (frame !== null) cancelAnimationFrame(frame);
+      if (zoomIdleTimer) clearTimeout(zoomIdleTimer);
+      zoomIdleTimer = null;
       closeTooltipTimerRef.current = cancelTooltipClose(closeTooltipTimerRef.current);
       if (tooltipFrameRef.current !== null) cancelAnimationFrame(tooltipFrameRef.current);
       tooltipFrameRef.current = null;
@@ -715,6 +743,8 @@ export function MapCanvas({
       mapRef.current?.stop();
       mapRef.current?.remove();
       mapRef.current = null;
+      continuousZoomRef.current = null;
+      cancelContinuousZoomRef.current = null;
       leafletRef.current = null;
       hoverTooltipRef.current = null;
       hoveredFeatureRef.current = null;
@@ -931,6 +961,7 @@ export function MapCanvas({
     const zoom = (delta: 1 | -1, initiatedByKeyboard: boolean) => {
       const map = mapRef.current;
       if (!map) return;
+      cancelContinuousZoomRef.current?.();
       const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
       const options = getZoomOptions(prefersReducedMotion, initiatedByKeyboard);
       if (delta === 1) map.zoomIn(1, options);

@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
+import type { Map as LeafletMap, Point } from "leaflet";
 import {
   cancelTooltipClose,
+  createContinuousZoomSession,
   directGesturePanOptions,
   getKeyboardZoomDelta,
   getMapMotionOptions,
@@ -13,6 +15,7 @@ import {
   scheduleTooltipClose,
   selectionPanOptions,
   tooltipFadeDurationMs,
+  trackpadZoomIdleDurationMs,
 } from "./motion.js";
 
 describe("map motion", () => {
@@ -51,6 +54,85 @@ describe("map motion", () => {
     expect(getZoomOptions(false, false)).toEqual({ animate: true });
     expect(getZoomOptions(false, true)).toBe(immediateZoomOptions);
     expect(getZoomOptions(true, false)).toBe(immediateZoomOptions);
+  });
+
+  it("keeps existing tile levels alive through a continuous trackpad zoom", () => {
+    const calls: string[] = [];
+    let zoom = 10;
+    let centerPoint: [number, number] | undefined;
+    let moveData: { pinch: true; round: false } | undefined;
+    const map = {
+      getZoom: () => zoom,
+      getZoomScale: (nextZoom: number) => 2 ** (nextZoom - zoom),
+      getSize: () => ({ x: 800, y: 600 }),
+      containerPointToLatLng: (point: [number, number]) => {
+        centerPoint = point;
+        return { lat: 65.76, lng: 11.72 };
+      },
+      _stop: () => { calls.push("stop"); return map; },
+      _moveStart: () => { calls.push("moveStart"); return map; },
+      _move: (_center: unknown, nextZoom: number, data: { pinch: true; round: false }) => {
+        calls.push("move");
+        zoom = nextZoom;
+        moveData = data;
+        return map;
+      },
+      fire: (event: string) => { calls.push(`fire:${event}`); return map; },
+      _moveEnd: () => { calls.push("moveEnd"); return map; },
+      _onZoomTransitionEnd: () => { calls.push("finishAnimatedZoom"); },
+      _resetView: vi.fn(),
+    } as unknown as LeafletMap;
+
+    const session = createContinuousZoomSession(map);
+    session.move({ x: 600, y: 300 } as Point, 11);
+
+    expect(trackpadZoomIdleDurationMs).toBe(80);
+    expect(session.active).toBe(true);
+    expect(centerPoint).toEqual([500, 300]);
+    expect(moveData).toEqual({ pinch: true, round: false });
+    expect(calls).toEqual(["stop", "moveStart", "move"]);
+    expect((map as unknown as { _resetView: ReturnType<typeof vi.fn> })._resetView).not.toHaveBeenCalled();
+
+    session.finish();
+
+    expect(session.active).toBe(false);
+    expect(calls).toEqual([
+      "stop",
+      "moveStart",
+      "move",
+      "fire:zoom",
+      "fire:move",
+      "moveEnd",
+    ]);
+  });
+
+  it("finishes a running Leaflet zoom before trackpad movement starts", () => {
+    const calls: string[] = [];
+    let zoom = 10;
+    const map = {
+      _animatingZoom: true,
+      getZoom: () => zoom,
+      getZoomScale: (nextZoom: number) => 2 ** (nextZoom - zoom),
+      getSize: () => ({ x: 800, y: 600 }),
+      containerPointToLatLng: () => ({ lat: 65.76, lng: 11.72 }),
+      _onZoomTransitionEnd: () => {
+        calls.push("finishAnimatedZoom");
+        map._animatingZoom = false;
+      },
+      _stop: () => { calls.push("stop"); return map; },
+      _moveStart: () => { calls.push("moveStart"); return map; },
+      _move: (_center: unknown, nextZoom: number) => {
+        calls.push("move");
+        zoom = nextZoom;
+        return map;
+      },
+      fire: () => map,
+      _moveEnd: () => map,
+    } as unknown as LeafletMap;
+
+    createContinuousZoomSession(map).move({ x: 400, y: 300 } as Point, 10.5);
+
+    expect(calls).toEqual(["finishAnimatedZoom", "stop", "moveStart", "move"]);
   });
 
   it("recognizes only the keyboard keys that Leaflet uses for zoom", () => {
