@@ -193,7 +193,8 @@ geometry parts.
 
 - A pixel-based two-finger trackpad gesture pans the map in both axes and keeps
   the surrounding page still while the pointer is over the map.
-- Ctrl + trackpad pinch zooms smoothly around the pointer.
+- Ctrl + trackpad pinch zooms smoothly around the pointer. The previous tile
+  level stays visible until replacement tiles are ready.
 - Direct touch pans and pinches without an activation step.
 - Keyboard navigation is available in the combobox and map.
 
