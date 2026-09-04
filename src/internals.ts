@@ -1,5 +1,41 @@
 import type { MapExplorerFeature } from "./index.js";
 
+export const lineHitAreaPaneName = "mapExplorerLineHitArea";
+
+export function supportsLineHitArea(feature: MapExplorerFeature, width: number | undefined) {
+  return Number.isFinite(width) && (width ?? 0) > 0 &&
+    (feature.geometry.type === "LineString" || feature.geometry.type === "MultiLineString");
+}
+
+export function getLineHitAreaPathOptions(width: number) {
+  return {
+    pane: lineHitAreaPaneName,
+    stroke: true,
+    color: "transparent",
+    opacity: 0,
+    weight: width,
+    fill: false,
+    fillOpacity: 0,
+    interactive: true,
+    className: "map-explorer__line-hit-area",
+  } as const;
+}
+
+export function collectFeatureLayersInRenderOrder<TEntry, TLayer>(
+  entries: Iterable<TEntry>,
+  getHitLayer: (entry: TEntry) => TLayer | null,
+  getVisibleLayer: (entry: TEntry) => TLayer,
+) {
+  const ordered: TLayer[] = [];
+  const retainedEntries = [...entries];
+  for (const entry of retainedEntries) {
+    const hitLayer = getHitLayer(entry);
+    if (hitLayer) ordered.push(hitLayer);
+  }
+  for (const entry of retainedEntries) ordered.push(getVisibleLayer(entry));
+  return ordered;
+}
+
 export type MapSearchRecord = {
   id: string;
   type: string;

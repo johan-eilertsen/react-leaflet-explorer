@@ -174,6 +174,27 @@ keyboard-activated zoom buttons. The same motion fallbacks apply when
 Use `pathOptions` when geometry needs more than token changes. The default
 outline is one pixel, or two pixels for the selected feature.
 
+## Easier selection of thin lines
+
+Use `lineHitAreaWidth` to add a wider, invisible pointer area behind
+`LineString` and `MultiLineString` geometry. The value is the total width in
+pixels and does not change the visible `weight` or `dashArray`. It works on
+both `MapExplorer` and the low-level `MapCanvas`.
+
+```tsx
+<MapExplorer
+  features={routes}
+  lineHitAreaWidth={16}
+  pathOptions={() => ({
+    color: "#315c40",
+    weight: 2.5,
+    dashArray: "6 5",
+  })}
+/>
+```
+
+Omit `lineHitAreaWidth` to keep the original Leaflet pointer behavior.
+
 ## Optional map labels
 
 Use `mapLabel` for short, always-visible labels that belong directly on the

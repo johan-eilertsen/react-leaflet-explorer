@@ -92,6 +92,7 @@
 .map-explorer__edit-handle span { display: block; width: 12px; height: 12px; border: 2px solid var(--map-explorer-surface); border-radius: 999px; background: var(--map-explorer-selected); box-shadow: 0 1px 5px rgb(0 0 0 / .35); }
 .map-explorer__feature-label { pointer-events: none; padding: .14rem .34rem; border: 1px solid color-mix(in srgb, var(--map-explorer-foreground) 28%, transparent); border-radius: calc(var(--map-explorer-radius) - 2px); background: color-mix(in srgb, var(--map-explorer-surface) 90%, transparent); color: var(--map-explorer-foreground); box-shadow: 0 1px 5px rgb(0 0 0 / .16); font-size: .75rem; font-weight: 750; font-variant-numeric: tabular-nums; line-height: 1; }
 .map-explorer__feature-label::before { display: none; }
+.map-explorer .map-explorer__line-hit-area, .map-explorer__surface .map-explorer__line-hit-area { fill: none !important; stroke: transparent !important; stroke-opacity: 0 !important; pointer-events: stroke !important; transition: none !important; }
 .map-explorer .leaflet-interactive, .map-explorer__surface .leaflet-interactive { transition: fill var(--map-explorer-duration-geometry, 160ms) var(--map-explorer-ease-in-out, cubic-bezier(0.77, 0, 0.175, 1)), fill-opacity var(--map-explorer-duration-geometry, 160ms) var(--map-explorer-ease-in-out, cubic-bezier(0.77, 0, 0.175, 1)), stroke var(--map-explorer-duration-geometry, 160ms) var(--map-explorer-ease-in-out, cubic-bezier(0.77, 0, 0.175, 1)), stroke-opacity var(--map-explorer-duration-geometry, 160ms) var(--map-explorer-ease-in-out, cubic-bezier(0.77, 0, 0.175, 1)), stroke-width var(--map-explorer-duration-geometry, 160ms) var(--map-explorer-ease-in-out, cubic-bezier(0.77, 0, 0.175, 1)); }
 .map-explorer .leaflet-zoom-anim .leaflet-zoom-animated, .map-explorer__surface .leaflet-zoom-anim .leaflet-zoom-animated { transition: transform var(--map-explorer-duration-map-zoom, 240ms) var(--map-explorer-ease-in-out, cubic-bezier(0.77, 0, 0.175, 1)); }
 .map-explorer .leaflet-fade-anim .leaflet-tile, .map-explorer__surface .leaflet-fade-anim .leaflet-tile { transition: opacity var(--map-explorer-duration-map-tile-fade, 180ms) var(--map-explorer-ease-out, cubic-bezier(0.23, 1, 0.32, 1)); }
@@ -111,4 +112,7 @@
   .map-explorer__search-popup[data-starting-style], .map-explorer__search-popup[data-ending-style] { transform: translateX(-.72rem) scale(1); }
   .map-explorer__selected-presence, .map-explorer__selected-presence[data-starting-style], .map-explorer__selected-presence[data-ending-style] { transform: none; }
   .map-explorer__reset:active, .map-explorer__filter-option:active, .map-explorer__fullscreen:active, .map-explorer__zoom button:active, .map-explorer__selected-close:active { transform: none; }
+}
+@media (forced-colors: active) {
+  .map-explorer .map-explorer__line-hit-area, .map-explorer__surface .map-explorer__line-hit-area { forced-color-adjust: none; stroke: transparent !important; stroke-opacity: 0 !important; }
 }
