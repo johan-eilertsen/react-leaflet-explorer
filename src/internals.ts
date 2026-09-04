@@ -1,5 +1,14 @@
 import type { MapExplorerFeature } from "./index.js";
 
+export function notifyVertexMove(
+  callback: ((feature: MapExplorerFeature, vertexIndex: number, coordinate: [number, number]) => void) | undefined,
+  feature: MapExplorerFeature,
+  vertexIndex: number,
+  coordinate: [number, number],
+) {
+  callback?.(feature, vertexIndex, coordinate);
+}
+
 export const lineHitAreaPaneName = "mapExplorerLineHitArea";
 
 export function supportsLineHitArea(feature: MapExplorerFeature, width: number | undefined) {

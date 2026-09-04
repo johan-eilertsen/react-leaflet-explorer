@@ -27,7 +27,7 @@ import {
   selectedOverlayDurationMs,
   trackpadZoomIdleDurationMs,
 } from "./motion.js";
-import { buildMapSearchIndex, collectFeatureLayersInRenderOrder, collectVisibleFeatureIds, filterMapSearchIndex, getLineHitAreaPathOptions, lineHitAreaPaneName, reconcileKeyedEntries, reconcileMapEntries, sameMapFeatureIds, supportsLineHitArea, uniqueEntriesByKey, updateSelectedEntries } from "./internals.js";
+import { buildMapSearchIndex, collectFeatureLayersInRenderOrder, collectVisibleFeatureIds, filterMapSearchIndex, getLineHitAreaPathOptions, lineHitAreaPaneName, notifyVertexMove, reconcileKeyedEntries, reconcileMapEntries, sameMapFeatureIds, supportsLineHitArea, uniqueEntriesByKey, updateSelectedEntries } from "./internals.js";
 
 const FeatureTooltipVisibilityContext = createContext(true);
 
@@ -91,7 +91,7 @@ export type MapExplorerProps = {
   defaultSelectedId?: string | null;
   onSelect?: (id: string | null) => void;
   onViewportChange?: (ids: string[]) => void;
-  onVertexMove?: (featureId: string, vertexIndex: number, coordinate: [number, number]) => void;
+  onVertexMove?: (feature: MapExplorerFeature, vertexIndex: number, coordinate: [number, number]) => void;
   editableFeatureIds?: string[];
   pathOptions?: (feature: MapExplorerFeature, selected: boolean) => PathOptions;
   lineHitAreaWidth?: number;
@@ -124,7 +124,7 @@ export type MapCanvasProps = {
   selectedId: string | null;
   onSelect: (id: string) => void;
   onViewportChange?: (ids: string[]) => void;
-  onVertexMove?: (featureId: string, vertexIndex: number, coordinate: [number, number]) => void;
+  onVertexMove?: (feature: MapExplorerFeature, vertexIndex: number, coordinate: [number, number]) => void;
   editableFeatureIds?: string[];
   pathOptions: (feature: MapExplorerFeature, selected: boolean) => PathOptions;
   lineHitAreaWidth?: number;
@@ -929,7 +929,10 @@ export function MapCanvas({
       if (!editable.has(feature.properties.id) || feature.geometry.type !== "Polygon") continue;
       feature.geometry.coordinates[0]?.slice(0, -1).forEach(([lng, lat], index) => {
         const marker = L.marker([lat, lng], { draggable: true, keyboard: true, title: `Move point ${index + 1} in ${feature.properties.label}`, icon: L.divIcon({ className: "map-explorer__edit-handle", html: "<span></span>", iconSize: [20, 20], iconAnchor: [10, 10] }) });
-        marker.on("dragend", () => { const point = marker.getLatLng(); callbacksRef.current.onVertexMove?.(feature.properties.id, index, [point.lng, point.lat]); });
+        marker.on("dragend", () => {
+          const point = marker.getLatLng();
+          notifyVertexMove(callbacksRef.current.onVertexMove, feature, index, [point.lng, point.lat]);
+        });
         marker.addTo(map);
         entry.editMarkers.push(marker);
       });
