@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MapExplorer, MapSelectionPanel, type MapExplorerFeature } from "./index.js";
-import { buildMapSearchIndex, collectFeatureLayersInRenderOrder, collectVisibleFeatureIds, filterMapSearchIndex, getLineHitAreaPathOptions, lineHitAreaPaneName, reconcileKeyedEntries, reconcileMapEntries, sameMapFeatureIds, supportsLineHitArea, uniqueEntriesByKey, updateSelectedEntries } from "./internals.js";
+import { buildMapSearchIndex, collectFeatureLayersInRenderOrder, collectVisibleFeatureIds, filterMapSearchIndex, getLineHitAreaPathOptions, lineHitAreaPaneName, notifyVertexMove, reconcileKeyedEntries, reconcileMapEntries, sameMapFeatureIds, supportsLineHitArea, uniqueEntriesByKey, updateSelectedEntries } from "./internals.js";
 
 const features = [
   {
@@ -112,6 +112,16 @@ describe("line hit areas", () => {
       (entry) => entry.hit,
       (entry) => entry.visible,
     )).toEqual(["hit-one", "hit-three", "visible-one", "visible-two", "visible-three"]);
+  });
+});
+
+describe("vertex editing", () => {
+  it("passes the complete feature to the consumer callback", () => {
+    const onVertexMove = vi.fn();
+
+    notifyVertexMove(onVertexMove, features[0], 2, [11.25, 65.25]);
+
+    expect(onVertexMove).toHaveBeenCalledWith(features[0], 2, [11.25, 65.25]);
   });
 });
 

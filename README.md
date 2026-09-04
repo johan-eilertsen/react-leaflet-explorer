@@ -188,7 +188,16 @@ Use `mapLabel` for short labels that belong directly on the geometry, such as as
 
 ## Optional vertex editing
 
-Pass `editableFeatureIds` and `onVertexMove` to show draggable handles for polygon vertices. The callback receives the feature ID, vertex index and updated coordinate. The application remains responsible for saving, history and destructive-action safeguards.
+Pass `editableFeatureIds` and `onVertexMove` to show draggable handles for polygon vertices. The callback receives the complete feature, vertex index and updated coordinate. Read any domain identifier from the feature's own properties. The application remains responsible for saving, history and destructive-action safeguards.
+
+## 0.6 migration
+
+Version 0.6 uses general feature terminology throughout the public contract:
+
+- Replace the `selectedPlace` label override with `selectedFeature`.
+- The first `onVertexMove` argument is now the complete feature instead of its ID. Read `feature.properties.id` or another application-defined property in the callback.
+
+The package no longer reserves `"all"` as an internal type-filter value.
 
 ## Low-level primitive
 
