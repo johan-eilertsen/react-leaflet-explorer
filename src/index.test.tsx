@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MapExplorer, MapSelectionPanel, type MapExplorerFeature } from "./index.js";
-import { buildMapSearchIndex, collectVisibleFeatureIds, filterMapSearchIndex, reconcileKeyedEntries, reconcileMapEntries, sameMapFeatureIds, uniqueEntriesByKey, updateSelectedEntries } from "./internals.js";
+import { buildMapSearchIndex, collectFeatureLayersInRenderOrder, collectVisibleFeatureIds, filterMapSearchIndex, getLineHitAreaPathOptions, lineHitAreaPaneName, reconcileKeyedEntries, reconcileMapEntries, sameMapFeatureIds, supportsLineHitArea, uniqueEntriesByKey, updateSelectedEntries } from "./internals.js";
 
 const features = [
   {
@@ -15,6 +15,105 @@ const features = [
     properties: { id: "two", label: "Boathouse", type: "building", typeLabel: "Building" },
   },
 ] satisfies MapExplorerFeature[];
+
+const lineFeature = {
+  type: "Feature",
+  geometry: { type: "LineString", coordinates: [[11, 65], [12, 66]] },
+  properties: { id: "route", label: "Route", type: "route" },
+} satisfies MapExplorerFeature;
+
+const multiLineFeature = {
+  ...lineFeature,
+  geometry: {
+    type: "MultiLineString",
+    coordinates: [[[11, 65], [12, 66]], [[12, 66], [13, 65]]],
+  },
+} satisfies MapExplorerFeature;
+
+describe("line hit areas", () => {
+  it("only enables a positive finite width for line geometry", () => {
+    expect(supportsLineHitArea(lineFeature, 16)).toBe(true);
+    expect(supportsLineHitArea(multiLineFeature, 16)).toBe(true);
+    expect(supportsLineHitArea(features[0], 16)).toBe(false);
+    expect(supportsLineHitArea(lineFeature, undefined)).toBe(false);
+    expect(supportsLineHitArea(lineFeature, 0)).toBe(false);
+    expect(supportsLineHitArea(lineFeature, Number.NaN)).toBe(false);
+  });
+
+  it("keeps dashed and solid visual styles independent from the invisible width", () => {
+    const dashed = { color: "#315c40", weight: 2.5, dashArray: "6 5" };
+    const solid = { color: "#315c40", weight: 2 };
+
+    expect(getLineHitAreaPathOptions(16)).toEqual({
+      pane: lineHitAreaPaneName,
+      stroke: true,
+      color: "transparent",
+      opacity: 0,
+      weight: 16,
+      fill: false,
+      fillOpacity: 0,
+      interactive: true,
+      className: "map-explorer__line-hit-area",
+    });
+    expect(dashed).toEqual({ color: "#315c40", weight: 2.5, dashArray: "6 5" });
+    expect(solid).toEqual({ color: "#315c40", weight: 2 });
+  });
+
+  it("selects inside the configured hit width but not outside it", async () => {
+    Object.assign(globalThis, {
+      window: { screen: {}, devicePixelRatio: 1 },
+      document: {
+        documentElement: { style: {} },
+        createElement: () => ({ getContext: () => ({}), style: {} }),
+      },
+    });
+    const L = await import("leaflet");
+    type TestPolyline = ReturnType<typeof L.polyline> & {
+      _containsPoint: (point: ReturnType<typeof L.point>) => boolean;
+      _parts: ReturnType<typeof L.point>[][];
+      _rawPxBounds: ReturnType<typeof L.bounds>;
+      _renderer: { options: { tolerance: number } };
+      _updateBounds: () => void;
+    };
+    const createTestPolyline = (weight: number) => {
+      const layer = L.polyline([], { weight, interactive: true }) as TestPolyline;
+      layer._parts = [[L.point(0, 0), L.point(100, 0)]];
+      layer._rawPxBounds = L.bounds(L.point(0, 0), L.point(100, 0));
+      layer._renderer = { options: { tolerance: 0 } };
+      layer._updateBounds();
+      return layer;
+    };
+    const visibleLayer = createTestPolyline(2.5);
+    const hitLayer = createTestPolyline(getLineHitAreaPathOptions(16).weight);
+    const onSelect = vi.fn();
+    visibleLayer.on("click", () => onSelect("route"));
+    hitLayer.on("click", () => onSelect("route"));
+    const clickAt = (point: ReturnType<typeof L.point>) => {
+      if (visibleLayer._containsPoint(point)) visibleLayer.fire("click");
+      else if (hitLayer._containsPoint(point)) hitLayer.fire("click");
+    };
+
+    clickAt(L.point(50, 7));
+    expect(onSelect).toHaveBeenCalledOnce();
+    expect(onSelect).toHaveBeenLastCalledWith("route");
+
+    clickAt(L.point(50, 9));
+    expect(onSelect).toHaveBeenCalledOnce();
+  });
+
+  it("keeps hit and visible layers in deterministic feature order", () => {
+    const entries = [
+      { hit: "hit-one", visible: "visible-one" },
+      { hit: null, visible: "visible-two" },
+      { hit: "hit-three", visible: "visible-three" },
+    ];
+    expect(collectFeatureLayersInRenderOrder(
+      entries,
+      (entry) => entry.hit,
+      (entry) => entry.visible,
+    )).toEqual(["hit-one", "hit-three", "visible-one", "visible-two", "visible-three"]);
+  });
+});
 
 describe("filterMapSearchIndex", () => {
   const records = buildMapSearchIndex(features);

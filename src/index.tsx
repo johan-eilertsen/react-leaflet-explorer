@@ -27,7 +27,7 @@ import {
   selectedOverlayDurationMs,
   trackpadZoomIdleDurationMs,
 } from "./motion.js";
-import { buildMapSearchIndex, collectVisibleFeatureIds, filterMapSearchIndex, reconcileKeyedEntries, reconcileMapEntries, sameMapFeatureIds, uniqueEntriesByKey, updateSelectedEntries } from "./internals.js";
+import { buildMapSearchIndex, collectFeatureLayersInRenderOrder, collectVisibleFeatureIds, filterMapSearchIndex, getLineHitAreaPathOptions, lineHitAreaPaneName, reconcileKeyedEntries, reconcileMapEntries, sameMapFeatureIds, supportsLineHitArea, uniqueEntriesByKey, updateSelectedEntries } from "./internals.js";
 
 const FeatureTooltipVisibilityContext = createContext(true);
 
@@ -90,6 +90,7 @@ export type MapExplorerProps = {
   onVertexMove?: (featureId: string, vertexIndex: number, coordinate: [number, number]) => void;
   editableFeatureIds?: string[];
   pathOptions?: (feature: MapExplorerFeature, selected: boolean) => PathOptions;
+  lineHitAreaWidth?: number;
   mapLabel?: (feature: MapExplorerFeature) => string | null | undefined;
   filters?: MapExplorerFilter[];
   labels?: Partial<MapExplorerLabels>;
@@ -122,6 +123,7 @@ export type MapCanvasProps = {
   onVertexMove?: (featureId: string, vertexIndex: number, coordinate: [number, number]) => void;
   editableFeatureIds?: string[];
   pathOptions: (feature: MapExplorerFeature, selected: boolean) => PathOptions;
+  lineHitAreaWidth?: number;
   mapLabel?: (feature: MapExplorerFeature) => string | null | undefined;
   bounds?: [[number, number], [number, number]];
   center?: [number, number];
@@ -142,6 +144,7 @@ export type MapCanvasProps = {
 type FeatureLayerEntry = {
   feature: MapExplorerFeature;
   layer: LeafletGeoJSON;
+  hitLayer: LeafletGeoJSON | null;
   bounds: LatLngBounds;
   editMarkers: Marker[];
 };
@@ -444,6 +447,7 @@ export function MapExplorer({
   onVertexMove,
   editableFeatureIds,
   pathOptions = defaultPathOptions,
+  lineHitAreaWidth,
   mapLabel,
   filters,
   labels: labelsOverride,
@@ -509,6 +513,7 @@ export function MapExplorer({
         onVertexMove={onVertexMove}
         editableFeatureIds={editableFeatureIds}
         pathOptions={pathOptions}
+        lineHitAreaWidth={lineHitAreaWidth}
         mapLabel={mapLabel}
         bounds={bounds}
         center={center}
@@ -581,6 +586,7 @@ export function MapCanvas({
   onVertexMove,
   editableFeatureIds = noEditableFeatureIds,
   pathOptions,
+  lineHitAreaWidth,
   mapLabel,
   bounds,
   center = defaultCenter,
@@ -614,11 +620,13 @@ export function MapCanvas({
   const selectedIdRef = useRef(selectedId);
   const styledSelectionRef = useRef<string | null>(null);
   const pathOptionsRef = useRef(pathOptions);
+  const styledLineHitAreaWidthRef = useRef(lineHitAreaWidth);
   const showFeatureTooltipsRef = useRef(showFeatureTooltips);
   const fittedRef = useRef(false);
   const previousSelectionRef = useRef<string | null>(null);
   const continuousZoomRef = useRef<ReturnType<typeof createContinuousZoomSession> | null>(null);
   const cancelContinuousZoomRef = useRef<(() => void) | null>(null);
+  const lineHitAreaWidthRef = useRef(lineHitAreaWidth);
   const callbacksRef = useRef({ onSelect, onViewportChange, onVertexMove, pathOptions, mapLabel });
   const [ready, setReady] = useState(false);
   const [nativeFullscreen, setNativeFullscreen] = useState(false);
@@ -626,6 +634,7 @@ export function MapCanvas({
   callbacksRef.current = { onSelect, onViewportChange, onVertexMove, pathOptions, mapLabel };
   currentFeaturesRef.current = features;
   selectedIdRef.current = selectedId;
+  lineHitAreaWidthRef.current = lineHitAreaWidth;
   showFeatureTooltipsRef.current = showFeatureTooltips;
   const fullscreen = nativeFullscreen || fallbackFullscreen;
   const reportsViewport = onViewportChange !== undefined;
@@ -771,12 +780,7 @@ export function MapCanvas({
     const L = leafletRef.current;
     const map = mapRef.current;
     if (!ready || !L || !map) return;
-    reconcileMapEntries(featureLayersRef.current, features, (feature) => {
-      const options = callbacksRef.current.pathOptions(feature, feature.properties.id === selectedIdRef.current);
-      const layer = L.geoJSON(feature, {
-        style: () => options,
-        pointToLayer: (_point, latlng) => L.circleMarker(latlng, options),
-      });
+    const bindFeatureInteraction = (layer: LeafletGeoJSON, feature: MapExplorerFeature) => {
       layer.on("mouseover", (event) => {
         if (!showFeatureTooltipsRef.current) return;
         const tooltip = hoverTooltipRef.current;
@@ -808,8 +812,26 @@ export function MapCanvas({
         });
       });
       layer.on("click", () => callbacksRef.current.onSelect(feature.properties.id));
+      return layer;
+    };
+    const createHitLayer = (feature: MapExplorerFeature) => {
+      const width = lineHitAreaWidthRef.current;
+      if (!supportsLineHitArea(feature, width)) return null;
+      const pane = map.getPane(lineHitAreaPaneName) ?? map.createPane(lineHitAreaPaneName);
+      pane.style.zIndex = "399";
+      return bindFeatureInteraction(L.geoJSON(feature, {
+        style: () => getLineHitAreaPathOptions(width as number),
+      }), feature).addTo(map);
+    };
+    reconcileMapEntries(featureLayersRef.current, features, (feature) => {
+      const options = callbacksRef.current.pathOptions(feature, feature.properties.id === selectedIdRef.current);
+      const hitLayer = createHitLayer(feature);
+      const layer = bindFeatureInteraction(L.geoJSON(feature, {
+        style: () => options,
+        pointToLayer: (_point, latlng) => L.circleMarker(latlng, options),
+      }), feature);
       layer.addTo(map);
-      return { feature, layer, bounds: layer.getBounds(), editMarkers: [] };
+      return { feature, layer, hitLayer, bounds: layer.getBounds(), editMarkers: [] };
     }, (entry) => {
       if (hoveredFeatureRef.current === entry.feature) {
         hoveredFeatureRef.current = null;
@@ -820,10 +842,24 @@ export function MapCanvas({
         if (tooltip && map.hasLayer(tooltip)) map.removeLayer(tooltip);
       }
       for (const marker of entry.editMarkers) marker.remove();
+      entry.hitLayer?.remove();
       entry.layer.remove();
     });
+    for (const entry of featureLayersRef.current.values()) {
+      const shouldHaveHitLayer = supportsLineHitArea(entry.feature, lineHitAreaWidth);
+      if (shouldHaveHitLayer && !entry.hitLayer) entry.hitLayer = createHitLayer(entry.feature);
+      if (!shouldHaveHitLayer && entry.hitLayer) {
+        entry.hitLayer.remove();
+        entry.hitLayer = null;
+      }
+    }
+    for (const layer of collectFeatureLayersInRenderOrder(
+      featureLayersRef.current.values(),
+      (entry) => entry.hitLayer,
+      (entry) => entry.layer,
+    )) layer.bringToFront();
     if (reportsViewport) reportViewport();
-  }, [features, ready, reportViewport, reportsViewport]);
+  }, [features, lineHitAreaWidth, ready, reportViewport, reportsViewport]);
 
   useEffect(() => {
     if (showFeatureTooltips) return;
@@ -838,18 +874,24 @@ export function MapCanvas({
 
   useEffect(() => {
     if (!ready) return;
-    const updateAll = pathOptionsRef.current !== pathOptions;
+    const updateAll = pathOptionsRef.current !== pathOptions || styledLineHitAreaWidthRef.current !== lineHitAreaWidth;
     pathOptionsRef.current = pathOptions;
+    styledLineHitAreaWidthRef.current = lineHitAreaWidth;
     updateSelectedEntries(
       featureLayersRef.current.values(),
       styledSelectionRef.current,
       selectedId,
       updateAll,
       (entry) => entry.feature.properties.id,
-      (entry, selected) => entry.layer.setStyle(pathOptions(entry.feature, selected)),
+      (entry, selected) => {
+        entry.layer.setStyle(pathOptions(entry.feature, selected));
+        if (entry.hitLayer && lineHitAreaWidth !== undefined) {
+          entry.hitLayer.setStyle(getLineHitAreaPathOptions(lineHitAreaWidth));
+        }
+      },
     );
     styledSelectionRef.current = selectedId;
-  }, [pathOptions, ready, selectedId]);
+  }, [lineHitAreaWidth, pathOptions, ready, selectedId]);
 
   useEffect(() => {
     const L = leafletRef.current;
