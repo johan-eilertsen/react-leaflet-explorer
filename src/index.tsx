@@ -38,12 +38,16 @@ export type MapExplorerFeature = Feature<Geometry, {
   typeLabel?: string;
   description?: string;
   searchText?: string;
-  editId?: string;
   [key: string]: unknown;
 }>;
 
 export type MapExplorerFilter = {
   value: string;
+  label: string;
+};
+
+type MapExplorerTypeOption = {
+  value: string | null;
   label: string;
 };
 
@@ -59,7 +63,7 @@ export type MapExplorerLabels = {
   zoomControls: string;
   zoomIn: string;
   zoomOut: string;
-  selectedPlace: string;
+  selectedFeature: string;
   closeSelected: string;
   results: string;
 };
@@ -150,19 +154,19 @@ type FeatureLayerEntry = {
 };
 
 const defaultLabels: MapExplorerLabels = {
-  search: "Search places",
-  searchPlaceholder: "Search by name",
+  search: "Search map features",
+  searchPlaceholder: "Search by label or keyword",
   filter: "Filter by type",
   allTypes: "All types",
   reset: "Reset filters",
-  noResults: "No places match your search.",
+  noResults: "No features match your search.",
   fullscreen: "Open map in fullscreen",
   exitFullscreen: "Exit fullscreen",
   zoomControls: "Zoom controls",
   zoomIn: "Zoom in",
   zoomOut: "Zoom out",
-  selectedPlace: "Selected place",
-  closeSelected: "Close selected place",
+  selectedFeature: "Selected feature",
+  closeSelected: "Close selected feature",
   results: "results",
 };
 
@@ -298,9 +302,9 @@ function ExplorerCombobox({
   onQueryChange: (value: string) => void;
   onSelect: (id: string) => void;
   selectedId: string | null;
-  type: string;
-  typeOptions: MapExplorerFilter[];
-  onTypeChange: (value: string) => void;
+  type: string | null;
+  typeOptions: MapExplorerTypeOption[];
+  onTypeChange: (value: string | null) => void;
   onReset: () => void;
   labels: Pick<MapExplorerLabels, "search" | "searchPlaceholder" | "filter" | "reset" | "noResults">;
 }) {
@@ -309,7 +313,7 @@ function ExplorerCombobox({
   const [scrollEdges, setScrollEdges] = useState({ top: false, bottom: false });
   const activeType = typeOptions.find((option) => option.value === type) ?? typeOptions[0];
   const selected = features.find((feature) => feature.properties.id === selectedId) ?? null;
-  const hasActiveChoice = query.length > 0 || type !== "all" || selectedId !== null;
+  const hasActiveChoice = query.length > 0 || type !== null || selectedId !== null;
   const updateScrollEdges = useCallback(() => {
     const list = listRef.current;
     if (!list) return;
@@ -384,7 +388,7 @@ function ExplorerCombobox({
             <div className="map-explorer__filters" aria-label={labels.filter}>
               {typeOptions.map((option) => (
                 <button
-                  key={option.value}
+                  key={option.value === null ? "all-types" : `type:${option.value}`}
                   type="button"
                   className="map-explorer__filter-option"
                   data-active={type === option.value ? "true" : undefined}
@@ -467,14 +471,14 @@ export function MapExplorer({
   const [internalSelectedId, setInternalSelectedId] = useState(defaultSelectedId);
   const selectedId = controlledSelectedId === undefined ? internalSelectedId : controlledSelectedId;
   const [query, setQuery] = useState("");
-  const [type, setType] = useState("all");
+  const [type, setType] = useState<string | null>(null);
   const [viewportIds, setViewportIds] = useState<string[] | null>(null);
   const viewportIdsRef = useRef<string[] | null>(null);
   const typeOptions = useMemo(() => {
-    if (filters) return [{ value: "all", label: labels.allTypes }, ...filters.filter((item) => item.value !== "all")];
+    if (filters) return [{ value: null, label: labels.allTypes }, ...filters];
     const types = new Map<string, string>();
     for (const feature of features) types.set(feature.properties.type, feature.properties.typeLabel ?? feature.properties.type);
-    return [{ value: "all", label: labels.allTypes }, ...[...types].map(([value, label]) => ({ value, label }))];
+    return [{ value: null, label: labels.allTypes }, ...[...types].map(([value, label]) => ({ value, label }))];
   }, [features, filters, labels.allTypes]);
   const searchIndex = useMemo(() => buildMapSearchIndex(features), [features]);
   const visibleRecords = useMemo(() => filterMapSearchIndex(searchIndex, query, type), [query, searchIndex, type]);
@@ -483,7 +487,7 @@ export function MapExplorer({
     () => features.filter((feature) => visibleIds.has(feature.properties.id)),
     [features, visibleIds],
   );
-  const visiblePlaces = useMemo(() => visibleRecords.map((record) => record.representative), [visibleRecords]);
+  const searchableFeatures = useMemo(() => visibleRecords.map((record) => record.representative), [visibleRecords]);
   const selected = features.find((feature) => feature.properties.id === selectedId) ?? null;
   const resultCount = viewportIds?.length ?? visibleRecords.length;
   const handleViewportChange = useCallback((ids: string[]) => {
@@ -496,10 +500,10 @@ export function MapExplorer({
     if (controlledSelectedId === undefined) setInternalSelectedId(id);
     onSelect?.(id);
   }, [controlledSelectedId, onSelect]);
-  const reset = () => { setQuery(""); setType("all"); setSelected(null); };
-  const changeType = (nextType: string) => {
+  const reset = () => { setQuery(""); setType(null); setSelected(null); };
+  const changeType = (nextType: string | null) => {
     setType(nextType);
-    if (selected && nextType !== "all" && selected.properties.type !== nextType) setSelected(null);
+    if (selected && nextType !== null && selected.properties.type !== nextType) setSelected(null);
   };
 
   return (
@@ -528,7 +532,7 @@ export function MapExplorer({
           <div className="map-explorer__toolbar-region">
             <div className="map-explorer__toolbar">
               <ExplorerCombobox
-                features={visiblePlaces}
+                features={searchableFeatures}
                 query={query}
                 onQueryChange={setQuery}
                 onSelect={setSelected}
@@ -543,13 +547,13 @@ export function MapExplorer({
                 {resultCount} {labels.results}
               </span>
             </div>
-            {visiblePlaces.length === 0 ? <p className="map-explorer__status" role="status">{labels.noResults}</p> : null}
+            {searchableFeatures.length === 0 ? <p className="map-explorer__status" role="status">{labels.noResults}</p> : null}
           </div>
         ) : null}
         selectedOverlay={selected ? (
           renderSelected ? renderSelected(selected, { clearSelection: () => setSelected(null) }) : !browse ? (
             <MapSelectionPanel
-              ariaLabel={labels.selectedPlace}
+              ariaLabel={labels.selectedFeature}
               closeLabel={labels.closeSelected}
               onClose={() => setSelected(null)}
             >
@@ -925,7 +929,7 @@ export function MapCanvas({
       if (!editable.has(feature.properties.id) || feature.geometry.type !== "Polygon") continue;
       feature.geometry.coordinates[0]?.slice(0, -1).forEach(([lng, lat], index) => {
         const marker = L.marker([lat, lng], { draggable: true, keyboard: true, title: `Move point ${index + 1} in ${feature.properties.label}`, icon: L.divIcon({ className: "map-explorer__edit-handle", html: "<span></span>", iconSize: [20, 20], iconAnchor: [10, 10] }) });
-        marker.on("dragend", () => { const point = marker.getLatLng(); callbacksRef.current.onVertexMove?.(feature.properties.editId ?? feature.properties.id, index, [point.lng, point.lat]); });
+        marker.on("dragend", () => { const point = marker.getLatLng(); callbacksRef.current.onVertexMove?.(feature.properties.id, index, [point.lng, point.lat]); });
         marker.addTo(map);
         entry.editMarkers.push(marker);
       });
