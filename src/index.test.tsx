@@ -7,12 +7,12 @@ const features = [
   {
     type: "Feature",
     geometry: { type: "Point", coordinates: [11, 65] },
-    properties: { id: "one", label: "Myrøya", type: "island", typeLabel: "Island", searchText: "north" },
+    properties: { id: "one", label: "Zone Alpha", type: "zone", typeLabel: "Zone", searchText: "north" },
   },
   {
     type: "Feature",
     geometry: { type: "Point", coordinates: [12, 66] },
-    properties: { id: "two", label: "Boathouse", type: "building", typeLabel: "Building" },
+    properties: { id: "two", label: "Sensor 2", type: "sensor", typeLabel: "Sensor", searchText: "telemetry" },
   },
 ] satisfies MapExplorerFeature[];
 
@@ -117,15 +117,26 @@ describe("line hit areas", () => {
 
 describe("filterMapSearchIndex", () => {
   const records = buildMapSearchIndex(features);
-  it("searches names, labels and extra search text without case sensitivity", () => {
-    expect(filterMapSearchIndex(records, "MYR").map((item) => item.id)).toEqual(["one"]);
+  it("searches labels, types and extra search text without case sensitivity", () => {
+    expect(filterMapSearchIndex(records, "ALPHA").map((item) => item.id)).toEqual(["one"]);
     expect(filterMapSearchIndex(records, "north").map((item) => item.id)).toEqual(["one"]);
-    expect(filterMapSearchIndex(records, "building").map((item) => item.id)).toEqual(["two"]);
+    expect(filterMapSearchIndex(records, "sensor").map((item) => item.id)).toEqual(["two"]);
   });
 
   it("combines text and type filters", () => {
-    expect(filterMapSearchIndex(records, "house", "building").map((item) => item.id)).toEqual(["two"]);
-    expect(filterMapSearchIndex(records, "house", "island")).toEqual([]);
+    expect(filterMapSearchIndex(records, "telemetry", "sensor").map((item) => item.id)).toEqual(["two"]);
+    expect(filterMapSearchIndex(records, "telemetry", "zone")).toEqual([]);
+  });
+
+  it("allows all as a real feature type", () => {
+    const featureWithAllType = {
+      ...features[0],
+      properties: { ...features[0].properties, id: "all-type", type: "all" },
+    } satisfies MapExplorerFeature;
+    const extendedRecords = buildMapSearchIndex([...features, featureWithAllType]);
+
+    expect(filterMapSearchIndex(extendedRecords, "", "all").map((item) => item.id)).toEqual(["all-type"]);
+    expect(filterMapSearchIndex(extendedRecords, "").map((item) => item.id)).toEqual(["one", "two", "all-type"]);
   });
 });
 
@@ -254,16 +265,19 @@ describe("MapExplorer", () => {
     expect(markup).not.toContain(">Close selected map object<");
   });
 
-  it("renders the complete controls and selected-place surface on first use", () => {
+  it("renders generic default labels and the selected-feature surface", () => {
     const markup = renderToStaticMarkup(
       <MapExplorer features={features} defaultSelectedId="one" ariaLabel="Test map" />,
     );
     expect(markup).toContain('placeholder=""');
     expect(markup).toContain("map-explorer__selected-value");
+    expect(markup).toContain('aria-label="Search map features"');
     expect(markup).toContain("Reset filters");
     expect(markup).toContain("Open map in fullscreen");
     expect(markup).toContain("Zoom in");
-    expect(markup).toContain("Myrøya");
+    expect(markup).toContain('aria-label="Selected feature"');
+    expect(markup).toContain('aria-label="Close selected feature"');
+    expect(markup).toContain("Zone Alpha");
   });
 
   it("uses one integrated combobox for search, filters and reset", () => {
@@ -271,8 +285,8 @@ describe("MapExplorer", () => {
       <MapExplorer
         features={features}
         filters={[
-          { value: "island", label: "Islands" },
-          { value: "building", label: "Buildings" },
+          { value: "zone", label: "Zones" },
+          { value: "sensor", label: "Sensors" },
         ]}
         defaultSelectedId="one"
       />,
@@ -280,7 +294,7 @@ describe("MapExplorer", () => {
 
     expect(markup.match(/role="combobox"/g) ?? []).toHaveLength(1);
     expect(markup).toContain('aria-label="Reset filters"');
-    expect(markup).toContain("Myrøya");
+    expect(markup).toContain("Zone Alpha");
     expect(markup).toContain("map-explorer__selected-value");
   });
 
@@ -290,7 +304,7 @@ describe("MapExplorer", () => {
         mode="browse"
         features={features}
         defaultSelectedId="one"
-        selectedActions={<button type="button">Open named place</button>}
+        selectedActions={<button type="button">Open named feature</button>}
         ariaLabel="Map objects"
       />,
     );
@@ -303,8 +317,8 @@ describe("MapExplorer", () => {
     expect(markup).not.toContain("map-explorer__toolbar-region");
     expect(markup).not.toContain("map-explorer__result-count");
     expect(markup).not.toContain("map-explorer__selected");
-    expect(markup).not.toContain("Open named place");
-    expect(markup).not.toContain("Myrøya");
+    expect(markup).not.toContain("Open named feature");
+    expect(markup).not.toContain("Zone Alpha");
   });
 
   it("renders explicit name-free selected content in browse mode", () => {
@@ -325,8 +339,8 @@ describe("MapExplorer", () => {
       { clearSelection: expect.any(Function) },
     );
     expect(markup).toContain('aria-label="Selected map object"');
-    expect(markup).toContain("Island");
-    expect(markup).not.toContain("Myrøya");
+    expect(markup).toContain("Zone");
+    expect(markup).not.toContain("Zone Alpha");
   });
 
   it("names the zoom control group with its default or an overridden label", () => {

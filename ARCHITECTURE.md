@@ -6,8 +6,8 @@
 contract that applications should not reimplement:
 
 - accessible search, type filter and reset
-- geometry rendering and selected-place state
-- selected-place overlay, fullscreen and zoom controls inside the map frame
+- geometry rendering and selected-feature state
+- selected-feature overlay, fullscreen and zoom controls inside the map frame
 - mouse-wheel zoom, two-axis trackpad pan, ctrl-pinch zoom and direct touch
 - keyboard and focus behavior
 - responsive defaults and semantic CSS-variable theming

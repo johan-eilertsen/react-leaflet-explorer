@@ -1,18 +1,8 @@
 # react-leaflet-explorer
 
-An opinionated React + Leaflet map that works out of the box. It combines an
-accessible Base UI combobox, text search, type filtering, selection details,
-fullscreen and zoom controls, and deliberate mouse, trackpad and touch input.
+`react-leaflet-explorer` is an accessible React and Leaflet component for searching, filtering, viewing and selecting GeoJSON features. It includes fullscreen and zoom controls, mouse, trackpad and touch input, and a low-level map primitive for custom interfaces.
 
-The package contains no application data or product-specific styling. It uses
-semantic CSS variables, so multiple products can share the same behavior while
-using different themes.
-
-## Project management
-
-Active, generic package work belongs in this repository's GitHub Issues. Hysvær-specific product review and release work belongs to [the Hysvær project](https://github.com/johan-eilertsen/hysvaer/issues/1).
-
-Historical package tasks, plans, and handoffs are read-only under `docs/archive/project-management/`. The current Hysvær integration uses the published package; no package milestone is active merely because Hysvær still needs product approval.
+The package contains no application data or product styling. Its semantic CSS variables let each application supply its own theme.
 
 ## Install
 
@@ -23,21 +13,19 @@ npm install react-leaflet-explorer leaflet
 Import the component and its complete base stylesheet once:
 
 ```tsx
-import { MapExplorer, MapSelectionPanel } from "react-leaflet-explorer";
+import { MapExplorer } from "react-leaflet-explorer";
 import "react-leaflet-explorer/styles.css";
 
-export function PlacesMap() {
+export function AssetsMap() {
   return (
     <MapExplorer
-      ariaLabel="Places on the island"
-      features={places}
+      ariaLabel="Asset map"
+      features={assets}
       labels={{
-        search: "Search places",
-        searchPlaceholder: "Search by name",
-        filter: "Filter by type",
-        allTypes: "All places",
-        reset: "Reset",
-        zoomControls: "Map zoom controls",
+        search: "Search assets",
+        searchPlaceholder: "Search by asset name or identifier",
+        filter: "Filter by asset type",
+        allTypes: "All assets",
       }}
       onSelect={(id) => console.log(id)}
     />
@@ -45,14 +33,11 @@ export function PlacesMap() {
 }
 ```
 
-OpenStreetMap tiles are the default. Supply `tileUrl` and `attribution` when
-using another tile provider. The map fits non-empty feature data on first load.
-For an empty initial map, pass `center` or `bounds` to choose a relevant start
-view; the generic fallback center is `[0, 0]`.
+OpenStreetMap tiles are the default. Supply `tileUrl` and `attribution` to use another provider. The map fits non-empty feature data on first load. For an empty initial map, pass `center` or `bounds`; otherwise the map starts at `[0, 0]`.
 
-## Feature shape
+## Feature data
 
-`features` is GeoJSON with a small property contract:
+`features` accepts GeoJSON with a small metadata contract:
 
 ```ts
 type MapExplorerFeature = Feature<Geometry, {
@@ -62,39 +47,41 @@ type MapExplorerFeature = Feature<Geometry, {
   typeLabel?: string;
   description?: string;
   searchText?: string;
-  editId?: string;
+  [key: string]: unknown;
 }>;
 ```
 
-The explorer derives its type filter from the features. Pass `filters` to
-control filter order and labels. Search, type filters and reset share one
-combobox: type choices sit above the place suggestions, and the reset button
-clears the query, active type and selected place. A selected place is shown in
-the field when the visitor is not typing. Selecting a feature preserves the
-current zoom; the map only pans when the feature is outside the viewport.
-When a query or type filter is active, the explorer shows the deduplicated
-result count for the current viewport. Hover labels reuse one tooltip so only
-the feature under the pointer is announced visually.
-The viewport count remains visible without active filters and occupies a fixed
-layout slot. Pixel-based trackpad wheel gestures pan the map in both axes and
-do not scroll the surrounding page.
+- `id` identifies one logical feature. Several geometry parts can share an ID.
+- `label` supplies the searchable and accessible name.
+- `type` supplies the filter value. It has no reserved values. `typeLabel` can provide a human-readable label.
+- `description` appears in the default selection panel.
+- `searchText` adds searchable aliases, identifiers or keywords.
+- Other properties remain available to custom renderers and callbacks.
 
-## Browse without place names
+The explorer derives its type filters from the data. Pass `filters` to control their order and labels. Search, type filters and reset share one combobox. The result count covers unique features in the current viewport.
 
-Use `mode="browse"` when visitors should select map objects directly without seeing place names. Browse mode removes search, type filters, the result count, hover labels and the built-in selected-place panel. It keeps selected geometry, `onSelect`, zoom, fullscreen, pan and pinch behavior.
+Selecting a feature preserves the current zoom. The map pans only when the selected feature is outside the viewport. Hover labels reuse one tooltip, so the map shows only the label under the pointer.
 
-The `label` property is still required by the shared feature shape. Use a non-place identifier if the feature data must not contain a place name. Add name-free selected content with `renderSelected`:
+## Explore and browse modes
+
+`mode="explore"` is the default. It includes search, type filters, a result count, hover labels and a selection panel.
+
+Use `mode="browse"` for a map where people select features directly. Browse mode removes the search interface, result count, hover labels and default selection panel. It keeps selected geometry, `onSelect`, zoom, fullscreen, pan and pinch behaviour.
+
+You can add custom selected content in browse mode:
 
 ```tsx
+import { MapExplorer, MapSelectionPanel } from "react-leaflet-explorer";
+
 <MapExplorer
   mode="browse"
-  ariaLabel="Map of islands and reefs"
-  features={mapObjects}
+  ariaLabel="Operations map"
+  features={mapFeatures}
   onSelect={(id) => console.log(id)}
   renderSelected={(feature, { clearSelection }) => (
     <MapSelectionPanel
-      ariaLabel="Selected map object"
-      closeLabel="Close selected map object"
+      ariaLabel="Selected feature"
+      closeLabel="Close selected feature"
       onClose={clearSelection}
     >
       <p>{feature.properties.typeLabel ?? feature.properties.type}</p>
@@ -103,33 +90,31 @@ The `label` property is still required by the shared feature shape. Use a non-pl
 />
 ```
 
-The map and its zoom and fullscreen controls remain keyboard accessible. Leaflet geometry is selected by pointer click; browse mode does not add keyboard selection for individual unnamed objects.
+The map, zoom controls and fullscreen control remain keyboard accessible. Leaflet geometry is selected by pointer click; browse mode does not add keyboard selection for individual map features.
 
 ## Selection and custom content
 
-The component can own selection with `defaultSelectedId`, or an application
-can control it with `selectedId` and `onSelect`.
+The component can own selection with `defaultSelectedId`, or an application can control it with `selectedId` and `onSelect`.
 
-The built-in panel shows type, name and description. Add product actions with
-`selectedActions`, or replace only the selected-place content:
+The default panel shows the feature type, label and description. Add actions with `selectedActions`, or replace the panel content with `renderSelected`:
 
 ```tsx
 <MapExplorer
-  features={places}
+  features={mapFeatures}
   renderSelected={(feature, { clearSelection }) => (
-    <PlaceCard place={feature.properties} onClose={clearSelection} />
+    <FeatureCard feature={feature} onClose={clearSelection} />
   )}
 />
 ```
 
+All interface text can be replaced through `labels`. The defaults use general feature terminology and English accessible names.
+
 ## Theme
 
-Override variables on the component or a parent. The defaults also fall back
-to common shadcn semantic variables where appropriate. The combobox popup is
-kept inside the component tree, so a locally scoped theme applies to it too.
+Override variables on the component or a parent. The defaults also fall back to common shadcn semantic variables where appropriate. The combobox popup stays inside the component tree, so a locally scoped theme applies to it.
 
 ```css
-.family-map {
+.operations-map {
   --map-explorer-background: #faf8f1;
   --map-explorer-foreground: #17251b;
   --map-explorer-surface: #fffdf7;
@@ -157,33 +142,21 @@ kept inside the component tree, so a locally scoped theme applies to it too.
 }
 ```
 
-Motion variables can be overridden with the rest of the theme. For
-`prefers-reduced-motion`, the component removes spatial transforms and
-programmatic selection panning while preserving short opacity and color
-feedback.
+Motion variables can be overridden with the rest of the theme. For `prefers-reduced-motion`, the component removes spatial transforms and programmatic selection panning while preserving short opacity and colour feedback.
 
-Double-click and pointer clicks on the built-in zoom controls use the shared
-240 ms map-zoom transition. Keyboard zoom, Ctrl + trackpad pinch, touch pinch
-and direct panning stay immediate. The transform timing is active only while
-Leaflet is zooming, so geometry and tiles never trail each other during a pan.
-Low-level `MapCanvas` controls can use
-`zoomInImmediately` and `zoomOutImmediately` when a consumer renders its own
-keyboard-activated zoom buttons. The same motion fallbacks apply when
-`MapCanvas` is rendered without a surrounding `MapExplorer`.
+Double-click and pointer clicks on the built-in zoom controls use the shared 240 ms map-zoom transition. Keyboard zoom, Ctrl + trackpad pinch, touch pinch and direct panning stay immediate. The transform timing is active only while Leaflet is zooming, so geometry and tiles stay aligned during a pan.
 
-Use `pathOptions` when geometry needs more than token changes. The default
-outline is one pixel, or two pixels for the selected feature.
+Low-level `MapCanvas` controls can use `zoomInImmediately` and `zoomOutImmediately` when an application renders its own keyboard-activated zoom buttons. The same motion fallbacks apply when `MapCanvas` is rendered without a surrounding `MapExplorer`.
+
+Use `pathOptions` when geometry needs more than token changes. The default outline is one pixel, or two pixels for the selected feature.
 
 ## Easier selection of thin lines
 
-Use `lineHitAreaWidth` to add a wider, invisible pointer area behind
-`LineString` and `MultiLineString` geometry. The value is the total width in
-pixels and does not change the visible `weight` or `dashArray`. It works on
-both `MapExplorer` and the low-level `MapCanvas`.
+Use `lineHitAreaWidth` to add a wider, invisible pointer area behind `LineString` and `MultiLineString` geometry. The value is the total width in pixels and does not change the visible `weight` or `dashArray`. It works on both `MapExplorer` and `MapCanvas`.
 
 ```tsx
 <MapExplorer
-  features={routes}
+  features={networkLines}
   lineHitAreaWidth={16}
   pathOptions={() => ({
     color: "#315c40",
@@ -193,49 +166,37 @@ both `MapExplorer` and the low-level `MapCanvas`.
 />
 ```
 
-Omit `lineHitAreaWidth` to keep the original Leaflet pointer behavior.
+Omit `lineHitAreaWidth` to keep Leaflet's default pointer behaviour.
 
 ## Optional map labels
 
-Use `mapLabel` for short, always-visible labels that belong directly on the
-geometry, such as reference numbers in an administration map. Public maps can
-omit it and keep the same explorer behavior without internal metadata. One
-label is rendered per logical feature ID, including objects with multiple
-geometry parts.
+Use `mapLabel` for short labels that belong directly on the geometry, such as asset or zone identifiers. One label is rendered per logical feature ID, including features with several geometry parts.
 
 ```tsx
 <MapExplorer
-  features={places}
-  mapLabel={(feature) => String(feature.properties.number ?? "") || null}
+  features={mapFeatures}
+  mapLabel={(feature) => String(feature.properties.reference ?? "") || null}
 />
 ```
 
-## Input behavior
+## Input behaviour
 
-- A pixel-based two-finger trackpad gesture pans the map in both axes and keeps
-  the surrounding page still while the pointer is over the map.
-- Ctrl + trackpad pinch zooms smoothly around the pointer. The previous tile
-  level stays visible until replacement tiles are ready.
+- A pixel-based two-finger trackpad gesture pans the map in both axes and keeps the surrounding page still while the pointer is over the map.
+- Ctrl + trackpad pinch zooms around the pointer. Existing tiles stay visible until their replacements are ready.
 - Direct touch pans and pinches without an activation step.
-- Keyboard navigation is available in the combobox and map.
+- The combobox and map controls support keyboard navigation.
 
 ## Optional vertex editing
 
-Pass `editableFeatureIds` and `onVertexMove` to show draggable handles for
-polygon vertices. Saving, history and destructive-action safeguards remain the
-application's responsibility.
+Pass `editableFeatureIds` and `onVertexMove` to show draggable handles for polygon vertices. The callback receives the feature ID, vertex index and updated coordinate. The application remains responsible for saving, history and destructive-action safeguards.
 
 ## Low-level primitive
 
-`MapCanvas` exposes the map frame, geometry rendering and input behavior
-without the toolbar or built-in overlays. Use it only when the complete
-`MapExplorer` product surface does not fit.
+`MapCanvas` exposes the map frame, geometry rendering and input behaviour without the toolbar or built-in overlays. Use it when the complete `MapExplorer` interface does not fit.
 
-## 0.2 migration
+## Project management
 
-The pre-release `MapWorkspace` alias and the undocumented filtering helpers
-were removed in 0.2. Import `MapCanvas` for the low-level primitive and keep
-application-specific filtering outside the package.
+Use [GitHub Issues](https://github.com/johan-eilertsen/react-leaflet-explorer/issues) for active package work. Keep product-specific integration, content and release approval in each consuming application.
 
 ## License
 

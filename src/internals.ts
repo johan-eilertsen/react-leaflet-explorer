@@ -148,9 +148,9 @@ export function buildMapSearchIndex(features: MapExplorerFeature[]) {
   return [...records.values()];
 }
 
-export function filterMapSearchIndex(records: MapSearchRecord[], query: string, type = "all") {
+export function filterMapSearchIndex(records: MapSearchRecord[], query: string, type: string | null = null) {
   const needle = query.trim().toLocaleLowerCase();
   return records.filter((record) =>
-    (type === "all" || record.type === type) && (!needle || record.haystack.includes(needle)),
+    (type === null || record.type === type) && (!needle || record.haystack.includes(needle)),
   );
 }
