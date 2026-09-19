@@ -40,10 +40,7 @@ describe("line hit areas", () => {
     expect(supportsLineHitArea(lineFeature, Number.NaN)).toBe(false);
   });
 
-  it("keeps dashed and solid visual styles independent from the invisible width", () => {
-    const dashed = { color: "#315c40", weight: 2.5, dashArray: "6 5" };
-    const solid = { color: "#315c40", weight: 2 };
-
+  it("keeps the line hit area invisible and applies the configured width", () => {
     expect(getLineHitAreaPathOptions(16)).toEqual({
       pane: lineHitAreaPaneName,
       stroke: true,
@@ -55,8 +52,7 @@ describe("line hit areas", () => {
       interactive: true,
       className: "map-explorer__line-hit-area",
     });
-    expect(dashed).toEqual({ color: "#315c40", weight: 2.5, dashArray: "6 5" });
-    expect(solid).toEqual({ color: "#315c40", weight: 2 });
+    expect(getLineHitAreaPathOptions(4).weight).toBe(4);
   });
 
   it("selects inside the configured hit width but not outside it", async () => {
