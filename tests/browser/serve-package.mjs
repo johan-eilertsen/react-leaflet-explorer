@@ -10,9 +10,15 @@ process.on("exit", () => rmSync(staging, { recursive: true, force: true }));
 
 // Test the exact files npm would distribute, using installed peer dependencies.
 // No published version or neighboring application participates in resolution.
-const [{ filename }] = JSON.parse(execFileSync("npm", [
+const packed = JSON.parse(execFileSync("npm", [
   "pack", "--ignore-scripts", "--json", "--pack-destination", staging,
 ], { cwd: root, encoding: "utf8" }));
+// npm 11 returns an array; npm 12 keys the same metadata by package name.
+const [artifact] = Array.isArray(packed) ? packed : Object.values(packed ?? {});
+const filename = artifact?.filename;
+if (typeof filename !== "string" || !filename) {
+  throw new Error("npm pack did not return an archive filename");
+}
 execFileSync("tar", ["-xzf", join(staging, filename), "-C", staging]);
 const modules = join(staging, "node_modules");
 mkdirSync(modules);
