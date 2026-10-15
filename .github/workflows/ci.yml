@@ -25,3 +25,9 @@ jobs:
 
       - name: Kjør tester og bygg
         run: npm run check
+
+      - name: Installer testnettleseren
+        run: npx playwright install --with-deps chromium
+
+      - name: Kontroller den pakkede kartflaten i nettleser
+        run: npx playwright test
