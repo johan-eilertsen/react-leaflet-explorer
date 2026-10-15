@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync, symlinkSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, renameSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { createServer } from "vite";
@@ -14,18 +14,25 @@ const [{ filename }] = JSON.parse(execFileSync("npm", [
   "pack", "--ignore-scripts", "--json", "--pack-destination", staging,
 ], { cwd: root, encoding: "utf8" }));
 execFileSync("tar", ["-xzf", join(staging, filename), "-C", staging]);
-symlinkSync(join(root, "node_modules"), join(staging, "package", "node_modules"), "dir");
+const modules = join(staging, "node_modules");
+mkdirSync(modules);
+renameSync(join(staging, "package"), join(modules, "react-leaflet-explorer"));
+for (const dependency of readdirSync(join(root, "node_modules"))) {
+  if (dependency.startsWith(".") || dependency === "react-leaflet-explorer") continue;
+  symlinkSync(join(root, "node_modules", dependency), join(modules, dependency), "dir");
+}
+const fixture = join(staging, "browser");
+mkdirSync(fixture);
+for (const file of ["index.html", "main.tsx"]) {
+  copyFileSync(join(root, "tests/browser", file), join(fixture, file));
+}
 
 const server = await createServer({
   configFile: false,
-  root: join(root, "tests/browser"),
+  root: fixture,
   cacheDir: join(staging, "vite-cache"),
   resolve: {
     dedupe: ["react", "react-dom", "leaflet"],
-    alias: [
-      { find: /^react-leaflet-explorer$/, replacement: join(staging, "package/dist/index.js") },
-      { find: "react-leaflet-explorer/styles.css", replacement: join(staging, "package/dist/styles.css") },
-    ],
   },
   server: { host: "127.0.0.1", port: 3112, strictPort: true, fs: { allow: [root, staging] } },
 });
