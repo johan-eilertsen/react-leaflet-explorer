@@ -6,6 +6,7 @@
     "lib": ["DOM", "ES2022"],
     "jsx": "react-jsx",
     "declaration": true,
+    "rootDir": "src",
     "outDir": "dist",
     "strict": true,
     "skipLibCheck": true
