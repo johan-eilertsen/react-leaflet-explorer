@@ -203,6 +203,20 @@ The package no longer reserves `"all"` as an internal type-filter value.
 
 `MapCanvas` exposes the map frame, geometry rendering and input behaviour without the toolbar or built-in overlays. Use it when the complete `MapExplorer` interface does not fit.
 
+## Local verification
+
+Use Node.js 24 or newer, run `npm ci`, then `npm run check` for the unit tests
+and TypeScript package build. For the pointer interaction, install Chrome with
+`npx playwright install chrome` and run `npm run test:browser`.
+
+The browser command builds the package, creates a local npm tarball without
+publishing, and serves its extracted public exports in a small repository-owned
+fixture. It clicks 6 pixels beside a 2.5-pixel line with a 16-pixel hit area,
+checks that a 12-pixel miss does not select, and unmounts/remounts the map to
+check cleanup. Tiles are local test responses; no live map service or private
+consumer checkout is needed. The server removes the tarball and extracted files
+when Playwright stops it. `npm test` remains the fast unit-test command.
+
 ## Project management
 
 Use [GitHub Issues](https://github.com/johan-eilertsen/react-leaflet-explorer/issues) for active package work. Keep product-specific integration, content and release approval in each consuming application.

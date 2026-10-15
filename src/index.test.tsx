@@ -55,48 +55,6 @@ describe("line hit areas", () => {
     expect(getLineHitAreaPathOptions(4).weight).toBe(4);
   });
 
-  it("selects inside the configured hit width but not outside it", async () => {
-    Object.assign(globalThis, {
-      window: { screen: {}, devicePixelRatio: 1 },
-      document: {
-        documentElement: { style: {} },
-        createElement: () => ({ getContext: () => ({}), style: {} }),
-      },
-    });
-    const L = await import("leaflet");
-    type TestPolyline = ReturnType<typeof L.polyline> & {
-      _containsPoint: (point: ReturnType<typeof L.point>) => boolean;
-      _parts: ReturnType<typeof L.point>[][];
-      _rawPxBounds: ReturnType<typeof L.bounds>;
-      _renderer: { options: { tolerance: number } };
-      _updateBounds: () => void;
-    };
-    const createTestPolyline = (weight: number) => {
-      const layer = L.polyline([], { weight, interactive: true }) as TestPolyline;
-      layer._parts = [[L.point(0, 0), L.point(100, 0)]];
-      layer._rawPxBounds = L.bounds(L.point(0, 0), L.point(100, 0));
-      layer._renderer = { options: { tolerance: 0 } };
-      layer._updateBounds();
-      return layer;
-    };
-    const visibleLayer = createTestPolyline(2.5);
-    const hitLayer = createTestPolyline(getLineHitAreaPathOptions(16).weight);
-    const onSelect = vi.fn();
-    visibleLayer.on("click", () => onSelect("route"));
-    hitLayer.on("click", () => onSelect("route"));
-    const clickAt = (point: ReturnType<typeof L.point>) => {
-      if (visibleLayer._containsPoint(point)) visibleLayer.fire("click");
-      else if (hitLayer._containsPoint(point)) hitLayer.fire("click");
-    };
-
-    clickAt(L.point(50, 7));
-    expect(onSelect).toHaveBeenCalledOnce();
-    expect(onSelect).toHaveBeenLastCalledWith("route");
-
-    clickAt(L.point(50, 9));
-    expect(onSelect).toHaveBeenCalledOnce();
-  });
-
   it("keeps hit and visible layers in deterministic feature order", () => {
     const entries = [
       { hit: "hit-one", visible: "visible-one" },
