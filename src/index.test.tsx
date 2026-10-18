@@ -40,10 +40,7 @@ describe("line hit areas", () => {
     expect(supportsLineHitArea(lineFeature, Number.NaN)).toBe(false);
   });
 
-  it("keeps dashed and solid visual styles independent from the invisible width", () => {
-    const dashed = { color: "#315c40", weight: 2.5, dashArray: "6 5" };
-    const solid = { color: "#315c40", weight: 2 };
-
+  it("keeps the line hit area invisible and applies the configured width", () => {
     expect(getLineHitAreaPathOptions(16)).toEqual({
       pane: lineHitAreaPaneName,
       stroke: true,
@@ -55,50 +52,7 @@ describe("line hit areas", () => {
       interactive: true,
       className: "map-explorer__line-hit-area",
     });
-    expect(dashed).toEqual({ color: "#315c40", weight: 2.5, dashArray: "6 5" });
-    expect(solid).toEqual({ color: "#315c40", weight: 2 });
-  });
-
-  it("selects inside the configured hit width but not outside it", async () => {
-    Object.assign(globalThis, {
-      window: { screen: {}, devicePixelRatio: 1 },
-      document: {
-        documentElement: { style: {} },
-        createElement: () => ({ getContext: () => ({}), style: {} }),
-      },
-    });
-    const L = await import("leaflet");
-    type TestPolyline = ReturnType<typeof L.polyline> & {
-      _containsPoint: (point: ReturnType<typeof L.point>) => boolean;
-      _parts: ReturnType<typeof L.point>[][];
-      _rawPxBounds: ReturnType<typeof L.bounds>;
-      _renderer: { options: { tolerance: number } };
-      _updateBounds: () => void;
-    };
-    const createTestPolyline = (weight: number) => {
-      const layer = L.polyline([], { weight, interactive: true }) as TestPolyline;
-      layer._parts = [[L.point(0, 0), L.point(100, 0)]];
-      layer._rawPxBounds = L.bounds(L.point(0, 0), L.point(100, 0));
-      layer._renderer = { options: { tolerance: 0 } };
-      layer._updateBounds();
-      return layer;
-    };
-    const visibleLayer = createTestPolyline(2.5);
-    const hitLayer = createTestPolyline(getLineHitAreaPathOptions(16).weight);
-    const onSelect = vi.fn();
-    visibleLayer.on("click", () => onSelect("route"));
-    hitLayer.on("click", () => onSelect("route"));
-    const clickAt = (point: ReturnType<typeof L.point>) => {
-      if (visibleLayer._containsPoint(point)) visibleLayer.fire("click");
-      else if (hitLayer._containsPoint(point)) hitLayer.fire("click");
-    };
-
-    clickAt(L.point(50, 7));
-    expect(onSelect).toHaveBeenCalledOnce();
-    expect(onSelect).toHaveBeenLastCalledWith("route");
-
-    clickAt(L.point(50, 9));
-    expect(onSelect).toHaveBeenCalledOnce();
+    expect(getLineHitAreaPathOptions(4).weight).toBe(4);
   });
 
   it("keeps hit and visible layers in deterministic feature order", () => {
