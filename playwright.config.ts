@@ -17,5 +17,6 @@ export default defineConfig({
     command: "node tests/browser/serve-package.mjs",
     url: "http://127.0.0.1:3112",
     reuseExistingServer: false,
+    gracefulShutdown: { signal: "SIGTERM", timeout: 5000 },
   },
 });
