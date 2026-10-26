@@ -12,3 +12,10 @@ Reusable, accessible React/Leaflet library for exploring GeoJSON features. Read
   [Hysvær #1](https://github.com/johan-eilertsen/hysvaer/issues/1).
 - Run `npm run check` for unit tests and the package build. For map interaction
   changes, also run `npm run test:browser`; see README for the browser setup.
+
+## Påkrevd repo-kontekst
+
+- Før endring av domenebegreper eller datamodell: les [GLOSSARY.md](GLOSSARY.md) og [domenekontrakten](docs/agents/domain.md).
+- Før oppgavestyring: les [issue-kontrakten](docs/agents/issue-tracker.md); ved triage også [rollekoblingen](docs/agents/triage-labels.md).
+- Ved kodereview: les [CODING_STANDARDS.md](CODING_STANDARDS.md) og følg pekeren til felles kilde.
+- Ved varige arkitekturvalg: følg [beslutningskontrakten](docs/adr/README.md). Vedlikehold relevante begreper og pekere sammen med endringen.
