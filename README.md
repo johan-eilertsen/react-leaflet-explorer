@@ -207,7 +207,7 @@ The package no longer reserves `"all"` as an internal type-filter value.
 
 Use Node.js 24 or newer, run `npm ci`, then `npm run check` for the unit tests
 and TypeScript package build. For the pointer interaction, install Playwright's
-matching Chromium with `npx playwright install chromium` and run `npm run test:browser`.
+Chrome with `npx playwright install chrome` and run `npm run test:browser`.
 
 The browser command builds the package, creates a local npm tarball without
 publishing, and serves its extracted public exports in a small repository-owned
@@ -224,3 +224,5 @@ Use [GitHub Issues](https://github.com/johan-eilertsen/react-leaflet-explorer/is
 ## License
 
 MIT
+
+The browser checks use the installed Chrome channel with Chromium sandboxing explicitly enabled. Keep Chrome updated; updating the Playwright package alone does not update a downloaded browser engine.

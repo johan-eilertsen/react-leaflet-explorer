@@ -27,7 +27,7 @@ jobs:
         run: npm run check
 
       - name: Installer testnettleseren
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install --with-deps chrome
 
       - name: Kontroller den pakkede kartflaten i nettleser
         run: npx playwright test
