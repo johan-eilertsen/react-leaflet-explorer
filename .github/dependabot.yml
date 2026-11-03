@@ -15,7 +15,12 @@ updates:
       npm-security:
         applies-to: security-updates
         patterns: ["*"]
+      qualified-type-patches:
+        applies-to: version-updates
+        patterns: ["@types/leaflet"]
+        update-types: [patch]
       npm-minor-patch:
+        exclude-patterns: ["@types/leaflet"]
         applies-to: version-updates
         patterns:
           - "*"

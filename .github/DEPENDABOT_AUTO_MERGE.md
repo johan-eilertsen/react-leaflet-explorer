@@ -8,7 +8,10 @@ versions must exist in the public npm registry; the new version must be at least
 three days old. Canonical registry URLs and SHA512 are compared with the lock,
 and both actual tarballs are downloaded and hashed. Scripts, executables,
 runtime entries, deprecation and changed dependency/peer ranges disqualify the
-package. Errors and unknown input fail closed.
+package. Both full versions are queried against OSV, and the new one must have
+no known advisories. Failed or unknown advisory responses fail closed. A separate
+native Dependabot group prevents type patches being bundled with unrelated updates.
+Errors and unknown input fail closed.
 
 The read-only inspection checks out the exact trusted base policy, never the PR
 head. It reads immutable GitHub source snapshots and public registry artifacts;

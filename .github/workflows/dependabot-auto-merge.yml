@@ -64,11 +64,11 @@ jobs:
             const { data: pr } = await github.rest.pulls.get({ owner, repo, pull_number });
             if (pr.state !== 'open') return;
             const sameRepo = pr.head.repo?.full_name === owner + '/' + repo && pr.base.repo.full_name === owner + '/' + repo;
-            const bot = pr.user.login === 'dependabot[bot]' && pr.user.type === 'Bot' && sameRepo;
+            const bot = pr.user.login === 'dependabot[bot]' && pr.user.type === 'Bot';
             const expected = /^[0-9a-f]{40}$/.test(process.env.EXPECTED_HEAD || '') &&
               pr.head.sha === process.env.EXPECTED_HEAD && pr.base.sha === process.env.EXPECTED_BASE;
-            const qualified = bot && expected && !pr.draft && pr.base.ref === 'main' && process.env.QUALIFIED === 'true';
-            if (!sameRepo || pr.base.ref !== 'main' || context.ref !== 'refs/heads/main') return;
+            const qualified = bot && sameRepo && expected && !pr.draft && pr.base.ref === 'main' && process.env.QUALIFIED === 'true';
+            if (pr.base.ref !== 'main' || context.ref !== 'refs/heads/main') return;
             await github.rest.repos.createCommitStatus({ owner, repo, sha: pr.head.sha,
               context: 'Dependabot qualification', state: bot ? (qualified ? 'success' : 'failure') : 'success',
               description: bot ? (qualified ? 'Pinned type-only patch, registry and tarballs verified' : 'Not qualified for automatic merge') : 'Manual PR; no automatic merge',

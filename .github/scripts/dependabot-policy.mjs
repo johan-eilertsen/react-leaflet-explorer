@@ -75,5 +75,13 @@ export async function qualify({ pr, repository, files, before, after, registry, 
   assert.deepEqual(metadata.versions[old].dependencies ?? {}, metadata.versions[next].dependencies ?? {},
     "Dependency ranges must remain unchanged");
   assert.deepEqual(metadata.versions[old].peerDependencies ?? {}, metadata.versions[next].peerDependencies ?? {});
-  return { package: PACKAGE, from: old, to: next, head: pr.head.sha, base: pr.base.sha };
+  const security = await registry.advisories(PACKAGE, [old, next]);
+  assert.ok(Array.isArray(security.results) && security.results.length === 2, "Unknown OSV response");
+  for (const result of security.results) {
+    assert.ok(result && Object.keys(result).every(k => k === "vulns"), "Unqualified advisory response");
+    assert.ok(result.vulns === undefined || Array.isArray(result.vulns));
+  }
+  assert.equal((security.results[1].vulns ?? []).length, 0, "New full version has known OSV advisories");
+  return { package: PACKAGE, from: old, to: next, head: pr.head.sha, base: pr.base.sha,
+    previousAdvisories: (security.results[0].vulns ?? []).map(v => v.id) };
 }

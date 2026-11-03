@@ -6,8 +6,8 @@ const number = Number(process.env.PR_NUMBER);
 if (!/^[\w.-]+\/[\w.-]+$/.test(repository ?? "") || !Number.isSafeInteger(number) || number < 1) {
   throw new Error("Invalid repository or PR number");
 }
-async function bytes(url, headers = {}, maximum = 2 * 1024 * 1024) {
-  const response = await fetch(url, { headers, redirect: "error", signal: AbortSignal.timeout(30000) });
+async function bytes(url, headers = {}, maximum = 2 * 1024 * 1024, options = {}) {
+  const response = await fetch(url, { ...options, headers, redirect: "error", signal: AbortSignal.timeout(30000) });
   if (!response.ok) throw new Error("HTTP " + response.status);
   if (Number(response.headers.get("content-length")) > maximum) throw new Error("Response too large");
   const chunks = [];
@@ -19,7 +19,7 @@ async function bytes(url, headers = {}, maximum = 2 * 1024 * 1024) {
   }
   return Buffer.concat(chunks);
 }
-const json = async (url, headers) => JSON.parse(await bytes(url, headers));
+const json = async (url, headers, options) => JSON.parse(await bytes(url, headers, undefined, options));
 const api = (path) => json("https://api.github.com/repos/" + repository + path, {
   authorization: "Bearer " + process.env.GH_TOKEN,
   accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28",
@@ -43,6 +43,9 @@ if (isNativeBot(pr, repository)) {
       before: await snapshot(pr.base.sha), after: await snapshot(pr.head.sha), registry: {
         package: (name) => json("https://registry.npmjs.org/" + encodeURIComponent(name)),
         tarball: (url) => bytes(url),
+        advisories: (name, versions) => json("https://api.osv.dev/v1/querybatch",
+          { "content-type": "application/json" }, { method: "POST", body: JSON.stringify({
+            queries: versions.map(version => ({ package: { name, ecosystem: "npm" }, version })) }) }),
       } });
     qualified = true;
     reason = evidence.package + " " + evidence.from + " → " + evidence.to;

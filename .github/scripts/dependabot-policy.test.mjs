@@ -25,7 +25,7 @@ function fixture() {
     base:{ref:"main",sha:"b".repeat(40),repo:{full_name:"owner/repo"}}},
     files:[{filename:"package.json",status:"modified"},{filename:"package-lock.json",status:"modified"}],
     before,after,now:Date.parse("2026-11-03T20:00:00Z"),metadata,
-    registry:{package:async()=>metadata,tarball:async()=>bytes}};
+    registry:{package:async()=>metadata,tarball:async()=>bytes,advisories:async()=>({results:[{},{}]})}};
 }
 test("only an exact type-only patch with both actual tarball hashes qualifies", async()=>{
   const f=fixture();const seen=[];f.registry.tarball=async(u)=>{seen.push(u);return bytes;};
@@ -71,6 +71,10 @@ const cases = {
   "actual tarball corruption":f=>{f.registry.tarball=async()=>Buffer.from("corrupt");},
   "old tarball corruption":f=>{f.registry.tarball=async(u)=>u===url(a)?Buffer.from("corrupt"):bytes;},
   "oversized tarball":f=>{f.registry.tarball=async()=>Buffer.alloc(2*1024*1024+1);},
+  "new full version advisory":f=>{f.registry.advisories=async()=>({results:[{},{vulns:[{id:"GHSA-test"}]}]});},
+  "advisory lookup failure":f=>{f.registry.advisories=async()=>{throw Error("OSV 503");};},
+  "unknown advisory response":f=>{f.registry.advisories=async()=>({results:[{},{error:"unknown"}]});},
+  "missing advisory result":f=>{f.registry.advisories=async()=>({results:[{}]});},
   "registry failure":f=>{f.registry.package=async()=>{throw Error("HTTP 429");};},
 };
 for(const [label,mutate] of Object.entries(cases))test("rejects "+label,async()=>{const f=fixture();mutate(f);await assert.rejects(qualify(f));});
@@ -124,3 +128,5 @@ test("rejecting a previously armed bot head blocks its status and disables auto-
   const f=armFixture();f.env.QUALIFIED="false";f.pr.auto_merge={};await f.run();
   assert.equal(f.calls[0][1].state,"failure");assert.ok(f.calls.some(c=>c[0]==="disable"));
 });
+
+test("human fork gets a manual head status but never auto-merge",async()=>{const f=armFixture();f.pr.user.login="human";f.pr.head.repo.full_name="fork/repo";await f.run();assert.equal(f.calls[0][1].state,"success");assert.equal(f.calls.some(c=>c[0]==="enable"),false);});
