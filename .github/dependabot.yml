@@ -2,7 +2,8 @@ version: 2
 
 updates:
   - package-ecosystem: npm
-    directory: "/"
+    directories: ["/", "/**/*"]
+    exclude-paths: ["**/node_modules/**", "**/dist/**", "**/artifacts/**", "**/.openclaw/**"]
     schedule:
       interval: weekly
     cooldown:
@@ -11,6 +12,9 @@ updates:
       semver-minor-days: 7
       semver-patch-days: 3
     groups:
+      npm-security:
+        applies-to: security-updates
+        patterns: ["*"]
       npm-minor-patch:
         applies-to: version-updates
         patterns:
@@ -24,4 +28,13 @@ updates:
     schedule:
       interval: weekly
     cooldown:
+      # Actions har bare standardkarantene; minor/major vurderes manuelt etter 7/30 dager.
       default-days: 3
+    groups:
+      actions-security:
+        applies-to: security-updates
+        patterns: ["*"]
+      actions-minor-patch:
+        applies-to: version-updates
+        patterns: ["*"]
+        update-types: [minor, patch]
