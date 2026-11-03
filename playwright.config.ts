@@ -9,6 +9,8 @@ export default defineConfig({
   use: {
     baseURL: "http://127.0.0.1:3112",
     browserName: "chromium",
+    channel: "chrome",
+    launchOptions: { chromiumSandbox: true },
     viewport: { width: 1000, height: 700 },
     reducedMotion: "reduce",
     trace: "retain-on-failure",
