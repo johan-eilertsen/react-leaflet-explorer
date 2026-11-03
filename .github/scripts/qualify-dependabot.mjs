@@ -1,9 +1,9 @@
-import { appendFileSync } from "node:fs";
-import { isNativeBot, qualify } from "./dependabot-policy.mjs";
+import { appendFileSync, readFileSync } from "node:fs";
+import { REPOSITORY, REPOSITORY_ID, isRepository, isNativeBot, qualify, qualifyHead } from "./dependabot-policy.mjs";
 
 const repository = process.env.GITHUB_REPOSITORY;
 const number = Number(process.env.PR_NUMBER);
-if (!/^[\w.-]+\/[\w.-]+$/.test(repository ?? "") || !Number.isSafeInteger(number) || number < 1) {
+if (repository !== REPOSITORY || process.env.GITHUB_REPOSITORY_ID !== String(REPOSITORY_ID) || !Number.isSafeInteger(number) || number < 1) {
   throw new Error("Invalid repository or PR number");
 }
 async function bytes(url, headers = {}, maximum = 2 * 1024 * 1024, options = {}) {
@@ -24,12 +24,26 @@ const api = (path) => json("https://api.github.com/repos/" + repository + path, 
   authorization: "Bearer " + process.env.GH_TOKEN,
   accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28",
 });
+const event = JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, "utf8"));
+if (!isRepository(event.repository) || !isRepository(await api(""))) throw Error("Repository identity mismatch");
 const pr = await api("/pulls/" + number);
+if (pr.number !== number || (event.pull_request && (event.pull_request.number !== number ||
+    !isRepository(event.pull_request.base?.repo) || !isRepository(event.pull_request.head?.repo)))) {
+  throw Error("Event/PR repository identity mismatch");
+}
 let qualified = false;
 let reason = "Manual PR: never automatically merged";
 if (isNativeBot(pr, repository)) {
   try {
     if (pr.base.sha !== process.env.TRUSTED_BASE) throw new Error("Trusted policy base changed; requalify");
+    const { commit } = await api("/branches/main");
+    if (commit.sha !== pr.base.sha) throw Error("Actual main changed");
+    const graph = await json("https://api.github.com/graphql", {
+      authorization: "Bearer " + process.env.GH_TOKEN, "content-type": "application/json",
+    }, { method: "POST", body: JSON.stringify({query:
+      'query($sha:GitObjectID!){repository(owner:"johan-eilertsen",name:"react-leaflet-explorer"){nameWithOwner databaseId object(oid:$sha){... on Commit{oid author{user{login databaseId}} signature{__typename payload signature isValid state wasSignedByGitHub signer{login databaseId}} parents(first:2){totalCount nodes{oid}}}}}}', variables:{sha:pr.head.sha}}) });
+    if (graph.errors) throw Error("Unknown signature evidence");
+    qualifyHead(pr, await api("/commits/" + pr.head.sha), graph.data?.repository);
     const files = await api("/pulls/" + number + "/files?per_page=100");
     async function snapshot(ref) {
       const read = async (file) => {

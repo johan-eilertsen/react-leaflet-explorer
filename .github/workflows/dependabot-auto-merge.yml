@@ -1,7 +1,10 @@
-name: Qualified Dependabot auto-merge
+name: Qualified Dependabot direct landing
 on:
   pull_request_target:
     types: [opened, reopened, synchronize, edited, ready_for_review]
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
   workflow_dispatch:
     inputs:
       pull_request:
@@ -11,11 +14,12 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: dependabot-qualification-${{ github.event.pull_request.number || inputs.pull_request }}
+  group: dependabot-qualification-${{ github.event.pull_request.number || github.event.workflow_run.pull_requests[0].number || inputs.pull_request }}
   cancel-in-progress: false
 jobs:
   inspect:
     name: Inspect trusted dependency metadata
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -37,55 +41,153 @@ jobs:
         env:
           TRUSTED_BASE: ${{ github.event.pull_request.base.sha || github.sha }}
           GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pull_request }}
+          PR_NUMBER: ${{ github.event.pull_request.number || github.event.workflow_run.pull_requests[0].number || inputs.pull_request }}
         run: node .github/scripts/qualify-dependabot.mjs
-  arm:
-    name: Attest head and request native auto-merge
+  land:
+    name: Land exact qualified head through native protection
     needs: inspect
-    if: always()
+    if: needs.inspect.result == 'success' && needs.inspect.outputs.qualified == 'true' && vars.DEPENDABOT_TYPE_PATCH_PILOT == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
       pull-requests: write
-      statuses: write
+      checks: read
     steps:
-      # No checkout, package installation, PR script, cache or artifact in this job.
+      # No checkout, package installation, imports, cache or artifact in this job.
       - uses: actions/github-script@373c709c69115d41ff229c7e5df9f8788daa9553 # v9
         env:
-          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pull_request }}
+          PILOT_ENABLED: ${{ vars.DEPENDABOT_TYPE_PATCH_PILOT }}
+          PR_NUMBER: ${{ github.event.pull_request.number || github.event.workflow_run.pull_requests[0].number || inputs.pull_request }}
           QUALIFIED: ${{ needs.inspect.outputs.qualified }}
           EXPECTED_HEAD: ${{ needs.inspect.outputs.head }}
           EXPECTED_BASE: ${{ needs.inspect.outputs.base }}
         with:
+          retries: 0
           script: |
+            // This job never attests a shared commit status or leaves auto-merge armed.
+            if (process.env.PILOT_ENABLED !== 'true' || process.env.QUALIFIED !== 'true') return;
+            const fail = message => { throw Error(message); };
+            const fullName = 'johan-eilertsen/react-leaflet-explorer', repositoryId = 1322969511;
+            const isRepo = r => r?.full_name === fullName && r?.id === repositoryId;
             const { owner, repo } = context.repo;
-            const pull_number = Number(process.env.PR_NUMBER);
-            if (!Number.isSafeInteger(pull_number) || pull_number < 1) throw Error('Invalid PR');
-            const { data: pr } = await github.rest.pulls.get({ owner, repo, pull_number });
-            if (pr.state !== 'open') return;
-            const sameRepo = pr.head.repo?.full_name === owner + '/' + repo && pr.base.repo.full_name === owner + '/' + repo;
-            const bot = pr.user.login === 'dependabot[bot]' && pr.user.type === 'Bot';
-            const expected = /^[0-9a-f]{40}$/.test(process.env.EXPECTED_HEAD || '') &&
-              pr.head.sha === process.env.EXPECTED_HEAD && pr.base.sha === process.env.EXPECTED_BASE;
-            const qualified = bot && sameRepo && expected && !pr.draft && pr.base.ref === 'main' && process.env.QUALIFIED === 'true';
-            if (pr.base.ref !== 'main' || context.ref !== 'refs/heads/main') return;
-            await github.rest.repos.createCommitStatus({ owner, repo, sha: pr.head.sha,
-              context: 'Dependabot qualification', state: bot ? (qualified ? 'success' : 'failure') : 'success',
-              description: bot ? (qualified ? 'Pinned type-only patch, registry and tarballs verified' : 'Not qualified for automatic merge') : 'Manual PR; no automatic merge',
-              target_url: context.serverUrl + '/' + owner + '/' + repo + '/actions/runs/' + context.runId });
-            if (!qualified) {
-              if (bot && pr.auto_merge) await github.graphql('mutation($id:ID!){disablePullRequestAutoMerge(input:{pullRequestId:$id}){pullRequest{id}}}', {id:pr.node_id});
-              return;
+            const pull_number = Number(process.env.PR_NUMBER), H = process.env.EXPECTED_HEAD, A = process.env.EXPECTED_BASE;
+            if (owner + '/' + repo !== fullName || process.env.GITHUB_REPOSITORY !== fullName ||
+                process.env.GITHUB_REPOSITORY_ID !== String(repositoryId) || !isRepo(context.payload.repository) ||
+                context.ref !== 'refs/heads/main' || !Number.isSafeInteger(pull_number) || pull_number < 1 ||
+                !/^[0-9a-f]{40}$/.test(H || '') || !/^[0-9a-f]{40}$/.test(A || '')) fail('Untrusted execution identity');
+            if (context.payload.pull_request && (context.payload.pull_request.number !== pull_number ||
+                !isRepo(context.payload.pull_request.base?.repo) || !isRepo(context.payload.pull_request.head?.repo))) fail('Untrusted event PR');
+            const args = { owner, repo, pull_number };
+            const api = route => github.request('GET /repos/{owner}/{repo}/' + route, {...args, headers:{'X-GitHub-Api-Version':'2026-03-10'}});
+            const names = ['Dependabot policy tests', 'test'];
+            const same = (a,b) => JSON.stringify(a) === JSON.stringify(b);
+            function identity(pr, outcome = false) {
+              if (pr.number !== pull_number || !isRepo(pr.base?.repo) || !isRepo(pr.head?.repo) ||
+                  pr.user?.login !== 'dependabot[bot]' || pr.user?.type !== 'Bot' || pr.user?.id !== 49699333 ||
+                  pr.base.ref !== 'main' || (!outcome && pr.base.sha !== A) || pr.head.sha !== H ||
+                  !pr.head.ref.startsWith('dependabot/npm_and_yarn/') || pr.commits !== 1) fail('PR/head identity changed');
             }
-            const { data: settings } = await github.rest.repos.get({ owner, repo });
-            if (!settings.allow_auto_merge) return core.notice('Pilot inactive: native auto-merge disabled');
-            const { data: protection } = await github.rest.repos.getBranchProtection({ owner, repo, branch:'main' });
-            const checks = protection.required_status_checks;
-            for (const name of ['test', 'Dependabot policy tests', 'Dependabot qualification']) {
-              if (!checks?.strict || !checks.checks?.some(c => c.context === name && c.app_id === 15368)) throw Error('Missing strict native required check: ' + name);
+            function protection(p) {
+              // Deliberately support only a small classic-protection profile. Unknown = manual.
+              const known = ['url','required_status_checks','enforce_admins','required_pull_request_reviews',
+                'restrictions','required_linear_history','allow_force_pushes','allow_deletions','block_creations',
+                'required_conversation_resolution','lock_branch','allow_fork_syncing','required_signatures'];
+              const toggle = (value, enabled) => value && !Array.isArray(value) &&
+                Object.keys(value).every(k => ['url','enabled'].includes(k)) && value.enabled === enabled;
+              if (!p || Array.isArray(p) || Object.keys(p).some(k => !known.includes(k)) || !toggle(p.enforce_admins, true) ||
+                  !toggle(p.allow_force_pushes, false) || !toggle(p.allow_deletions, false) ||
+                  p.required_pull_request_reviews != null || p.restrictions != null) fail('Unknown or bypassable native protection');
+              for (const k of ['required_linear_history','block_creations','required_conversation_resolution',
+                               'lock_branch','allow_fork_syncing','required_signatures']) {
+                if (p[k] !== undefined && !toggle(p[k], false)) fail('Unsupported native rule: ' + k);
+              }
+              const c = p.required_status_checks;
+              if (!c || Object.keys(c).some(k => !['url','strict','contexts','contexts_url','checks'].includes(k)) || c.strict !== true || !Array.isArray(c.checks) || c.checks.length !== 2 ||
+                  !same(c.checks.map(x => x.context).sort(), names) || c.checks.some(x => x.app_id !== 15368 || Object.keys(x).some(k => !['context','app_id'].includes(k))) ||
+                  !Array.isArray(c.contexts) || !same([...c.contexts].sort(), names)) fail('Strict app-bound native checks missing');
             }
-            if (!protection.enforce_admins?.enabled) throw Error('Administrator enforcement missing');
-            const { data: base } = await github.rest.repos.getBranch({ owner, repo, branch:'main' });
-            if (base.commit.sha !== process.env.EXPECTED_BASE) throw Error('Base changed: requalification required');
-            await github.graphql('mutation($id:ID!,$sha:GitObjectID!){enablePullRequestAutoMerge(input:{pullRequestId:$id,expectedHeadOid:$sha,mergeMethod:MERGE}){pullRequest{id}}}',
-              { id:pr.node_id, sha:process.env.EXPECTED_HEAD });
+            async function inspect() {
+              const { data: settings } = await github.rest.repos.get({ owner, repo });
+              if (!isRepo(settings) || settings.default_branch !== 'main') fail('API repository changed');
+              const { data: pr } = await github.rest.pulls.get(args);
+              identity(pr);
+              if (pr.state !== 'open' || pr.draft !== false || pr.merged !== false || pr.auto_merge != null ||
+                  pr.mergeable !== true || pr.mergeable_state !== 'clean') fail('Not an immediate unarmed merge candidate');
+              const { data: base } = await github.rest.repos.getBranch({ owner, repo, branch: 'main' });
+              if (base.protected !== true || base.commit.sha !== A) fail('Actual protected main changed');
+              const { data: p } = await github.rest.repos.getBranchProtection({ owner, repo, branch: 'main' });
+              protection(p);
+              const { data: rules } = await api('rules/branches/main');
+              if (!Array.isArray(rules) || rules.length !== 0) fail('Unsupported effective ruleset');
+              const { data: commit } = await github.rest.repos.getCommit({ owner, repo, ref: H });
+              const v = commit.commit?.verification;
+              if (commit.sha !== H || !same(commit.parents?.map(p => p.sha), [A]) ||
+                  commit.author?.login !== 'dependabot[bot]' || commit.author?.type !== 'Bot' || commit.author?.id !== 49699333 ||
+                  commit.committer?.login !== 'web-flow' || commit.committer?.id !== 19864447 ||
+                  v?.verified !== true || v?.reason !== 'valid' || !v.signature?.startsWith('-----BEGIN PGP SIGNATURE-----') ||
+                  !v.payload?.includes('parent ' + A + '\n')) fail('Unknown actual head origin');
+              const g = await github.graphql('query($sha:GitObjectID!){repository(owner:"johan-eilertsen",name:"react-leaflet-explorer"){nameWithOwner databaseId object(oid:$sha){... on Commit{oid author{user{login databaseId}} signature{__typename payload signature isValid state wasSignedByGitHub signer{login databaseId}} parents(first:2){totalCount nodes{oid}}}}}}', {sha:H});
+              const h = g.repository?.object, s = h?.signature;
+              if (g.repository?.databaseId !== repositoryId || g.repository?.nameWithOwner !== fullName || h?.oid !== H ||
+                  h.author?.user?.login !== 'dependabot[bot]' || h.author?.user?.databaseId !== 49699333 ||
+                  h.parents?.totalCount !== 1 || !same(h.parents.nodes.map(p => p.oid), [A]) ||
+                  s?.__typename !== 'GpgSignature' || s.payload !== v.payload || s.signature !== v.signature || s.isValid !== true || s.state !== 'VALID' || s.wasSignedByGitHub !== true ||
+                  s.signer?.login !== 'web-flow' || s.signer?.databaseId !== 19864447) fail('Missing GitHub-signed bot binding');
+              const { data: checks } = await github.rest.checks.listForRef({ owner, repo, ref:H, filter:'latest', per_page:100 });
+              if (!Array.isArray(checks.check_runs) || checks.total_count !== checks.check_runs.length || checks.total_count > 100) fail('Incomplete checks');
+              for (const name of names) {
+                const runs = checks.check_runs.filter(c => c.name === name);
+                if (runs.length !== 1 || runs[0].app?.id !== 15368 || runs[0].head_sha !== H ||
+                    runs[0].status !== 'completed' || runs[0].conclusion !== 'success') fail('Exact head CI not successful: ' + name);
+              }
+            }
+            async function readOutcome(expectedMergeSha) {
+              const { data: pr } = await github.rest.pulls.get(args);
+              identity(pr, true);
+              if (pr.merged !== true) return false;
+              if (pr.state !== 'closed' || !/^[0-9a-f]{40}$/.test(pr.merge_commit_sha || '') ||
+                  (expectedMergeSha && pr.merge_commit_sha !== expectedMergeSha)) fail('Unknown merge outcome');
+              const { data: merge } = await github.rest.repos.getCommit({ owner, repo, ref:pr.merge_commit_sha });
+              if (merge.sha !== pr.merge_commit_sha || !same(merge.parents?.map(p => p.sha), [A,H])) fail('Merge parents do not prove qualified base/head');
+              core.notice('Verified native merge for exact head ' + H + ': ' + pr.merge_commit_sha);
+              return true;
+            }
+            await inspect();
+            // Reread native protection and actual main immediately before the only mutation.
+            // No claim of atomicity against a simultaneous trusted administrator edit.
+            await inspect();
+            let result;
+            try {
+              const response = await github.request('PUT /repos/{owner}/{repo}/pulls/{pull_number}/merge-async', {
+                ...args, sha:H, merge_method:'merge', merge_action:'direct_merge', bypass_rules:false,
+                headers:{'X-GitHub-Api-Version':'2026-03-10'}
+              });
+              result = response.data;
+            } catch (error) {
+              // The mutation may have succeeded. Read the SAME PR/head/outcome, never retry PUT.
+              if (await readOutcome()) return;
+              fail('Merge response lost/rejected; outcome unresolved, inspect this PR before any new action: ' + error.message);
+            }
+            if (!result || typeof result !== 'object') { await readOutcome(); fail('Malformed merge response; no retry'); }
+            if (result.status === 'pending') {
+              const d = result.details;
+              if (!/^[0-9a-f-]{36}$/.test(d?.uuid || '') || d.expected_head_sha !== H ||
+                  d.merge_action !== 'direct_merge' || d.merge_method !== 'merge' || d.bypass_rules !== false) {
+                await readOutcome(); fail('Unknown native admission; no retry');
+              }
+              core.notice('Native direct-merge request ' + d.uuid + ' for ' + H + '; pending is not merge proof');
+              // Bounded observation inside this job, never another merge submission.
+              try {
+                for (let attempt = 0; attempt < 10; attempt++) {
+                  result = (await api('pulls/' + pull_number + '/merge-async/' + d.uuid)).data;
+                  if (result.status !== 'pending') break;
+                  await new Promise(resolve => setTimeout(resolve, 2000));
+                }
+              } catch (error) {
+                if (await readOutcome()) return;
+                fail('Native result unavailable; no retry: ' + error.message);
+              }
+            }
+            if (result.status === 'merged' && !/^[0-9a-f]{40}$/.test(result.details?.sha || '')) { await readOutcome(); fail('Missing merge OID; no retry'); }
+            const merged = await readOutcome(result.status === 'merged' ? result.details?.sha : undefined);
+            if (result.status !== 'merged' || !merged) fail('Native request is not verified merged (' + result.status + '); inspect PR/result before any new action');
