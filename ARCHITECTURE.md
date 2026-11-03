@@ -28,3 +28,9 @@ The durable release model is a versioned npm package. Local integration uses
 `npm pack`; generated tarballs stay outside git. A release is complete only
 when the exact package version is published from a verified package SHA and
 consuming applications pass their own build and rendered QA.
+
+### Base UI release boundary
+
+Version 0.6.1 publishes the already-reviewed Base UI 1.9.0 source from maintenance PR #29. The tsc build preserves external imports (including @base-ui/react/combobox); it does not embed Base UI 1.7.0. React, React DOM and Leaflet peer ranges remain unchanged. Applications must install the new package, not override a real embedded implementation.
+
+Development and packed verification constrain Babel runtime to qualified 8.0.5 under Base UI React and utils; both upstream ranges accept it. npm overrides are root-only: consumers own the same scoped runtime constraint in their actual lockfile. This avoids opportunistically installing younger 8.1.0 without imposing a global runtime override. No application CSS, map API or publication workflow is changed.
