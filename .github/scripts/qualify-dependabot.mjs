@@ -1,4 +1,4 @@
-import { appendFileSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { REPOSITORY, REPOSITORY_ID, isRepository, isNativeBot, qualify, qualifyHead } from "./dependabot-policy.mjs";
 
 const repository = process.env.GITHUB_REPOSITORY;
@@ -68,7 +68,4 @@ if (isNativeBot(pr, repository)) {
   }
 }
 const outputs = { qualified: String(qualified), head: pr.head.sha, base: pr.base.sha };
-if (process.env.GITHUB_OUTPUT) {
-  for (const [key, value] of Object.entries(outputs)) appendFileSync(process.env.GITHUB_OUTPUT, key + "=" + value + String.fromCharCode(10));
-}
 console.log(JSON.stringify({ ...outputs, reason }));

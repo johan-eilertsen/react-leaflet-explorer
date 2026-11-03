@@ -3,7 +3,6 @@ import { createHash } from "node:crypto";
 
 export const REPOSITORY = "johan-eilertsen/react-leaflet-explorer";
 export const REPOSITORY_ID = 1322969511;
-export const REQUIRED_CHECKS = ["test", "Dependabot policy tests"];
 export const isRepository = (v) => v?.full_name === REPOSITORY && v?.id === REPOSITORY_ID;
 const object = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
 function validateOSV(response) {

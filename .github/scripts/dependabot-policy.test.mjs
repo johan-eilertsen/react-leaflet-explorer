@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { qualify, qualifyHead } from "./dependabot-policy.mjs";
+import { REPOSITORY, REPOSITORY_ID, isRepository, isNativeBot, qualify, qualifyHead } from "./dependabot-policy.mjs";
 
 const name = "@types/leaflet", a = "1.9.21", b = "1.9.22";
 const bytes = Buffer.from("fixture tarball, not a registry attestation");
@@ -93,77 +93,12 @@ for(const value of [true,17,[],null,{error:"bad"},{unknown:true},{vulns:[true]},
 }
 for(const value of [[],true,17,null,{results:[{},{}],error:"bad"},{results:[{},{}],extra:1}])test("OSV rejects malformed envelope "+JSON.stringify(value),async()=>{const f=fixture();f.registry.advisories=async()=>value;await assert.rejects(qualify(f));});
 
-const workflow=readFileSync(new URL('../workflows/dependabot-auto-merge.yml',import.meta.url),'utf8');
-const code=workflow.split('          script: |')[1].split('\n').map(l=>l.slice(12)).join('\n');
-const runWrite=new (Object.getPrototypeOf(async function(){}).constructor)('github','context','core','process','setTimeout',code);
 const repository={full_name:'johan-eilertsen/react-leaflet-explorer',id:1322969511};
 function headEvidence(pr) {
   const commit={sha:pr.head.sha,parents:[{sha:pr.base.sha}],author:{login:'dependabot[bot]',type:'Bot',id:49699333},committer:{login:'web-flow',id:19864447},commit:{verification:{verified:true,reason:'valid',signature:'-----BEGIN PGP SIGNATURE-----\nfixture',payload:'parent '+pr.base.sha+'\n'}}};
   const graph={...repository,nameWithOwner:repository.full_name,databaseId:repository.id,object:{oid:pr.head.sha,author:{user:{login:'dependabot[bot]',databaseId:49699333}},parents:{totalCount:1,nodes:[{oid:pr.base.sha}]},signature:{...commit.commit.verification,__typename:'GpgSignature',isValid:true,state:'VALID',wasSignedByGitHub:true,signer:{login:'web-flow',databaseId:19864447}}}};
   return {commit,graph};
 }
-function writeFixture() {
-  const pr={...fixture().pr,number:1,node_id:'PR_test',auto_merge:null,merged:false,mergeable:true,mergeable_state:'clean'};
-  const {commit,graph}=headEvidence(pr);
-  const checks=['test','Dependabot policy tests'].map(context=>({context,app_id:15368}));
-  const f={pr,commit,graph,calls:[],rules:[],base:pr.base.sha,
-    protection:{required_status_checks:{strict:true,contexts:checks.map(c=>c.context),checks},enforce_admins:{enabled:true},allow_force_pushes:{enabled:false},allow_deletions:{enabled:false},required_pull_request_reviews:null,restrictions:null},
-    checks:checks.map(c=>({name:c.context,app:{id:15368},head_sha:pr.head.sha,status:'completed',conclusion:'success'})),
-    env:{PILOT_ENABLED:'true',GITHUB_REPOSITORY:repository.full_name,GITHUB_REPOSITORY_ID:'1322969511',PR_NUMBER:'1',QUALIFIED:'true',EXPECTED_HEAD:pr.head.sha,EXPECTED_BASE:pr.base.sha},
-    context:{repo:{owner:'johan-eilertsen',repo:'react-leaflet-explorer'},ref:'refs/heads/main',payload:{repository:structuredClone(repository)}}};
-  const readPR=()=>{f.calls.push(['read-pr']);f.reads=(f.reads||0)+1;if(f.afterRead)f.afterRead(f);return {data:pr};};
-  const github={rest:{pulls:{get:async()=>readPR()},repos:{get:async()=>({data:{...repository,...f.settings,default_branch:'main'}}),getBranchProtection:async()=>{f.calls.push(['protection']);if(f.protectionError)throw Error('404');return {data:f.protection};},getBranch:async()=>({data:{protected:true,commit:{sha:f.base}}}),getCommit:async({ref})=>({data:ref===pr.head.sha?f.commit:{sha:ref,parents:[{sha:f.mergeBase||f.env.EXPECTED_BASE},{sha:pr.head.sha}]}}),createCommitStatus:async(v)=>f.calls.push(['status',v])},checks:{listForRef:async()=>({data:{total_count:f.checks.length,check_runs:f.checks}})}},graphql:async(query,args)=>{f.calls.push([query.includes('mutation')?'graphql-mutation':'graphql-read',args]);return {repository:f.graph};},request:async(route,args)=>{
-    f.calls.push([route,args]);
-    if(route.includes('rules/branches'))return {data:f.rules};
-    if(route.startsWith('PUT ')){f.mutations=(f.mutations||0)+1;if(f.reject)throw Object.assign(Error('denied'),{status:403});if(f.lost){if(f.lost==='merged'){pr.merged=true;pr.state='closed';pr.merge_commit_sha='d'.repeat(40);}throw Error('lost response');}return {data:{status:'pending',details:{uuid:'12345678-1234-1234-1234-123456789abc',merge_action:'direct_merge',merge_method:'merge',expected_head_sha:pr.head.sha,bypass_rules:false}}};}
-    if(route.includes('/merge-async/')){if(f.resultLost)throw Error('lost result response');if(f.outcome==='pending')return {data:{status:'pending'}};if(f.outcome==='failed')return {data:{status:'failed'}};if(f.outcome==='enqueued')return {data:{status:'enqueued'}};pr.merged=true;pr.state='closed';pr.merge_commit_sha='d'.repeat(40);return {data:{status:'merged',details:{sha:pr.merge_commit_sha}}};}
-    throw Error('Unexpected route '+route);
-  }};
-  f.run=()=>runWrite(github,f.context,{notice:m=>f.calls.push(['notice',m]),warning:m=>f.calls.push(['warning',m])},{env:f.env},fn=>fn());
-  return f;
-}
-const effects=f=>f.calls.filter(c=>c[0]==='status'||/^(PUT|POST|PATCH|DELETE) /.test(c[0])||c[0]==='graphql-mutation');
-test('write default is disabled without any write effect',async()=>{const f=writeFixture();delete f.env.PILOT_ENABLED;await f.run();assert.deepEqual(effects(f),[]);});
-test('exact head lands only after all native gates and result readback',async()=>{const f=writeFixture();await f.run();assert.equal(f.mutations,1);const call=effects(f)[0];assert.equal(call[1].sha,'a'.repeat(40));assert.equal(call[1].merge_action,'direct_merge');assert.equal(call[1].bypass_rules,false);assert.equal(f.pr.merged,true);assert.ok(f.reads>=3);assert.equal(f.calls.filter(c=>c[0]==='protection').length,2);});
-for(const [label,mutate] of Object.entries({
-  'shared SHA human fork already armed':f=>{f.pr.user.login='human';f.pr.head.repo={full_name:'human/fork',id:999};f.pr.auto_merge={};},
-  'already armed bot':f=>{f.pr.auto_merge={};},
-  'base repo ID123':f=>{f.pr.base.repo.id=123;},'head repo ID999':f=>{f.pr.head.repo.id=999;},
-  'event repo ID':f=>{f.context.payload.repository.id=1;},'env repo ID':f=>{f.env.GITHUB_REPOSITORY_ID='1';},
-  'GraphQL repo ID':f=>{f.graph.databaseId=1;},'GraphQL repository name':f=>{f.graph.nameWithOwner='attacker/repo';},
-  'spoofed bot':f=>{f.pr.user.id=1;},'head changed':f=>{f.pr.head.sha='c'.repeat(40);},
-  'A B H ancestry':f=>{f.commit.parents[0].sha='c'.repeat(40);f.graph.object.parents.nodes[0].oid='c'.repeat(40);},
-  'merge commit':f=>{f.commit.parents.push({sha:'c'.repeat(40)});},'multiple commits':f=>{f.pr.commits=2;},
-  'unknown author':f=>{f.commit.author=null;},'forged verified signature':f=>{f.graph.object.signature.wasSignedByGitHub=false;},
-  'unknown signer':f=>{f.graph.object.signature.signer.databaseId=1;},'no signed payload':f=>{f.commit.commit.verification.payload=null;},
-  'missing protection':f=>{f.protectionError=true;},'unknown protection':f=>{f.protection.unknown_rule=true;},
-  'missing admin enforcement':f=>{f.protection.enforce_admins.enabled=false;},'force push allowed':f=>{f.protection.allow_force_pushes.enabled=true;},
-  'deletion allowed':f=>{f.protection.allow_deletions.enabled=true;},'not strict':f=>{f.protection.required_status_checks.strict=false;},
-  'unknown ruleset':f=>{f.rules=[{type:'required_status_checks'}];},'review bypass actors':f=>{f.protection.required_pull_request_reviews={bypass_pull_request_allowances:{users:[{}]}};},
-  'missing check':f=>{f.checks.pop();},'pending check':f=>{f.checks[0].status='in_progress';},
-  'failed check':f=>{f.checks[0].conclusion='failure';},'wrong check app':f=>{f.checks[0].app.id=1;},
-  'wrong check SHA':f=>{f.checks[0].head_sha='c'.repeat(40);},'unknown required context':f=>{f.protection.required_status_checks.checks.push({context:'Other',app_id:15368});},
-  'base moves before mutation':f=>{f.afterRead=x=>{if(x.reads===2)x.base='c'.repeat(40);};},
-  'protection weakens at reread':f=>{f.afterRead=x=>{if(x.reads===2)x.protection.allow_force_pushes.enabled=true;};},
-  'inspection rejected':f=>{f.env.QUALIFIED='false';},
-  'missing inspected head':f=>{delete f.env.EXPECTED_HEAD;},
-  'missing inspected base':f=>{delete f.env.EXPECTED_BASE;},
-  'draft PR':f=>{f.pr.draft=true;},
-  'wrong target ref':f=>{f.pr.base.ref='release';},
-  'API base mismatch':f=>{f.pr.base.sha='c'.repeat(40);},
-  'fork with valid bot ID':f=>{f.pr.head.repo.full_name='attacker/repo';},
-}))test('no write effect: '+label,async()=>{const f=writeFixture();mutate(f);try{await f.run();}catch{}assert.deepEqual(effects(f),[]);});
-for(const mode of ['lost','merged'])test('lost mutation response rereads same PR without retry: '+mode,async()=>{const f=writeFixture();f.lost=mode;try{await f.run();}catch{}assert.equal(f.mutations,1);assert.ok(f.reads>=3);});
-test('native rejection is read back without retry',async()=>{const f=writeFixture();f.reject=true;await assert.rejects(f.run());assert.equal(f.mutations,1);assert.ok(f.reads>=3);});
-for(const outcome of ['pending','failed','enqueued'])test('admission is not merge proof: '+outcome,async()=>{const f=writeFixture();f.outcome=outcome;await assert.rejects(f.run());assert.equal(f.mutations,1);assert.equal(f.pr.merged,false);});
-test('privileged workflow has no checkout/import/cache/status/arming, and explicit activation boundary',()=>{
-  const job=workflow.slice(workflow.indexOf('  land:'));
-  assert.ok(workflow.includes('  land:'));assert.doesNotMatch(job,/uses: actions\/(checkout|setup-node)|npm |run:|download-artifact|restore-cache|require\(|import\(/);
-  assert.doesNotMatch(workflow,/statuses: write|createCommitStatus|enablePullRequestAutoMerge/);
-  assert.match(job,/vars\.DEPENDABOT_TYPE_PATCH_PILOT == 'true'/);assert.match(job,/retries: 0/);
-});
-
-
 test('OSV queries both exact versions and accepts a valid historical advisory only',async()=>{
   const f=fixture();let query;
   f.registry.advisories=async(...args)=>{query=args;return {results:[{vulns:[{id:'GHSA-aaaa-bbbb-cccc',modified:'2026-01-01T00:00:00Z'}]},{}]};};
@@ -189,31 +124,57 @@ for(const [label,mutate] of Object.entries({
   'non-PGP signature':e=>{e.graph.object.signature.__typename='SshSignature';},
   'invalid signature state':e=>{e.graph.object.signature.state='INVALID';},
 }))test('policy rejects head provenance: '+label,()=>{const pr=fixture().pr,e=headEvidence(pr);mutate(e);assert.throws(()=>qualifyHead(pr,e.commit,e.graph));});
-for(const value of ['false','TRUE','1',''])test('write flag requires literal true: '+value,async()=>{const f=writeFixture();f.env.PILOT_ENABLED=value;await f.run();assert.deepEqual(effects(f),[]);});
-test('wrong merge parents cannot prove landing',async()=>{const f=writeFixture();f.mergeBase='c'.repeat(40);await assert.rejects(f.run(),/parents/);assert.equal(f.mutations,1);});
-test('lost response and merged outcome must still match original head',async()=>{const f=writeFixture();f.lost='merged';f.afterRead=x=>{if(x.reads===3)x.pr.head.sha='e'.repeat(40);};await assert.rejects(f.run(),/identity/);assert.equal(f.mutations,1);});
-for(const row of [true,17,[]])test('malformed OSV cannot reach actual write job '+JSON.stringify(row),async()=>{const policy=fixture(),f=writeFixture();policy.registry.advisories=async()=>({results:[{},row]});f.env.QUALIFIED=String(await qualify(policy).then(()=>true,()=>false));await f.run();assert.deepEqual(effects(f),[]);});
-
-for(const [label,mutate] of Object.entries({
-  'API repository ID':f=>{f.settings={id:1};},'API repository full name':f=>{f.settings={full_name:'attacker/repo'};},
-  'environment repository':f=>{f.env.GITHUB_REPOSITORY='attacker/repo';},
-  'event PR base ID':f=>{f.context.payload.pull_request={...structuredClone(f.pr),base:{...f.pr.base,repo:{...repository,id:123}}};},
-  'event PR head ID':f=>{f.context.payload.pull_request={...structuredClone(f.pr),head:{...f.pr.head,repo:{...repository,id:999}}};},
-  'duplicate required check':f=>{f.checks.push({...f.checks[0]});},
-  'required check app mismatch':f=>{f.protection.required_status_checks.checks[0].app_id=1;},
-  'missing no-force evidence':f=>{delete f.protection.allow_force_pushes;},
-  'missing no-delete evidence':f=>{delete f.protection.allow_deletions;},
-}))test('additional write boundary: '+label,async()=>{const f=writeFixture();mutate(f);await assert.rejects(f.run());assert.deepEqual(effects(f),[]);});
-test('lost native result response reads same PR without retry',async()=>{const f=writeFixture();f.resultLost=true;await assert.rejects(f.run(),/unavailable/);assert.equal(f.mutations,1);assert.ok(f.reads>=3);});
-
-test('merge proof tolerates post-merge base tip but verifies exact original parents',async()=>{const f=writeFixture();f.afterRead=x=>{if(x.reads===3)x.pr.base.sha='d'.repeat(40);};await f.run();assert.equal(f.pr.merged,true);});
 for(const modified of ['2026-02-31T00:00:00Z','2026-01-01','2026-01-01T00:00:00','invalid'])test('reject malformed advisory timestamp '+modified,async()=>{const f=fixture();f.registry.advisories=async()=>({results:[{vulns:[{id:'GHSA-aaaa-bbbb-cccc',modified}]},{}]});await assert.rejects(qualify(f));});
 
-for(const [label,mutate] of Object.entries({
-  'nested force-push bypass':f=>{f.protection.allow_force_pushes.actors=[{}];},
-  'nested admin bypass':f=>{f.protection.enforce_admins.bypass=true;},
-  'unknown check-protection option':f=>{f.protection.required_status_checks.bypass=true;},
-  'signature bytes disagree':f=>{f.graph.object.signature.signature='other';},
-  'signed payload disagrees':f=>{f.graph.object.signature.payload='other';},
-  'previously armed with invalid protection':f=>{f.pr.auto_merge={};f.protection.enforce_admins.enabled=false;},
-}))test('strict unknown/binding boundary: '+label,async()=>{const f=writeFixture();mutate(f);await assert.rejects(f.run());assert.deepEqual(effects(f),[]);});
+const workflow = readFileSync(new URL('../workflows/dependabot-qualification.yml', import.meta.url), 'utf8');
+const runner = readFileSync(new URL('./qualify-dependabot.mjs', import.meta.url), 'utf8');
+test('qualification workflow has only read permissions and no merge job or activation flag', () => {
+  assert.doesNotMatch(workflow, /: write|land:|github-script|PILOT_ENABLED|DEPENDABOT_TYPE_PATCH_PILOT|outputs:/);
+  assert.match(workflow, /contents: read/);
+  assert.match(workflow, /pull-requests: read/);
+  assert.match(workflow, /persist-credentials: false/);
+  assert.match(workflow, /TRUSTED_BASE:/);
+});
+test('qualification runner has no GitHub mutation, shared status or exported merge authorization', () => {
+  assert.doesNotMatch(runner, /appendFileSync|GITHUB_OUTPUT|merge-async|createCommitStatus|enablePullRequestAutoMerge|mutation/);
+  assert.doesNotMatch(runner, /method: ["'](?:PUT|PATCH|DELETE)["']/);
+  assert.ok(runner.includes('https://api.github.com/graphql'));
+  assert.ok(runner.includes('query($sha:GitObjectID!'));
+});
+const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
+const executeQualification = new AsyncFunction('readFileSync', 'process', 'fetch', 'console',
+  'REPOSITORY', 'REPOSITORY_ID', 'isRepository', 'isNativeBot', 'qualify', 'qualifyHead',
+  runner.split(String.fromCharCode(10)).filter(line => !line.startsWith('import ')).join(String.fromCharCode(10)));
+function inspectionFixture() {
+  const pr = { ...fixture().pr, number: 1 };
+  pr.user = { login: 'human', type: 'User', id: 123 };
+  const event = { repository: structuredClone(repository) };
+  const env = { GITHUB_REPOSITORY: REPOSITORY, GITHUB_REPOSITORY_ID: String(REPOSITORY_ID), PR_NUMBER: '1', GITHUB_EVENT_PATH: 'fixture' };
+  const calls = [], logs = [];
+  const run = () => executeQualification(() => JSON.stringify(event), { env }, async (url, options) => {
+    calls.push({ url, method: options?.method ?? 'GET' });
+    if (url === 'https://api.github.com/repos/' + REPOSITORY) return new Response(JSON.stringify(repository));
+    if (url.endsWith('/pulls/1')) return new Response(JSON.stringify(pr));
+    throw Error('Unexpected request: ' + url);
+  }, { log: value => logs.push(JSON.parse(value)) }, REPOSITORY, REPOSITORY_ID, isRepository, isNativeBot, qualify, qualifyHead);
+  return { pr, event, env, calls, logs, run };
+}
+test('human PR sharing a bot SHA produces only an advisory unqualified log', async () => {
+  const f = inspectionFixture(); await f.run();
+  assert.equal(f.logs[0].qualified, 'false');
+  assert.ok(f.calls.every(call => call.method === 'GET'));
+});
+test('native bot on a fork remains unqualified without an effect', async () => {
+  const f = inspectionFixture(); f.pr.user = fixture().pr.user; f.pr.head.repo.id = 999;
+  await f.run(); assert.equal(f.logs[0].qualified, 'false');
+  assert.equal(f.calls.length, 2);
+});
+for (const [label, mutate] of Object.entries({
+  'environment repository ID': f => { f.env.GITHUB_REPOSITORY_ID = '999'; },
+  'event repository ID': f => { f.event.repository.id = 123; },
+  'event PR repository ID': f => { f.event.pull_request = structuredClone(f.pr); f.event.pull_request.head.repo.id = 999; },
+  'event PR number': f => { f.event.pull_request = structuredClone(f.pr); f.event.pull_request.number = 999; },
+})) test('read-only runner rejects ' + label, async () => {
+  const f = inspectionFixture(); mutate(f); await assert.rejects(f.run());
+  assert.equal(f.logs.length, 0); assert.ok(f.calls.every(call => call.method === 'GET'));
+});
