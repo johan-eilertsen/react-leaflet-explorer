@@ -1,0 +1,91 @@
+name: Qualified Dependabot auto-merge
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize, edited, ready_for_review]
+  workflow_dispatch:
+    inputs:
+      pull_request:
+        description: Existing PR number to requalify (never a synthetic candidate)
+        type: number
+        required: true
+permissions:
+  contents: read
+concurrency:
+  group: dependabot-qualification-${{ github.event.pull_request.number || inputs.pull_request }}
+  cancel-in-progress: false
+jobs:
+  inspect:
+    name: Inspect trusted dependency metadata
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      qualified: ${{ steps.policy.outputs.qualified }}
+      head: ${{ steps.policy.outputs.head }}
+      base: ${{ steps.policy.outputs.base }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.base.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - id: policy
+        name: Validate only API metadata, lockfiles and npm tarballs
+        env:
+          TRUSTED_BASE: ${{ github.event.pull_request.base.sha || github.sha }}
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pull_request }}
+        run: node .github/scripts/qualify-dependabot.mjs
+  arm:
+    name: Attest head and request native auto-merge
+    needs: inspect
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      statuses: write
+    steps:
+      # No checkout, package installation, PR script, cache or artifact in this job.
+      - uses: actions/github-script@373c709c69115d41ff229c7e5df9f8788daa9553 # v9
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pull_request }}
+          QUALIFIED: ${{ needs.inspect.outputs.qualified }}
+          EXPECTED_HEAD: ${{ needs.inspect.outputs.head }}
+          EXPECTED_BASE: ${{ needs.inspect.outputs.base }}
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const pull_number = Number(process.env.PR_NUMBER);
+            if (!Number.isSafeInteger(pull_number) || pull_number < 1) throw Error('Invalid PR');
+            const { data: pr } = await github.rest.pulls.get({ owner, repo, pull_number });
+            if (pr.state !== 'open') return;
+            const sameRepo = pr.head.repo?.full_name === owner + '/' + repo && pr.base.repo.full_name === owner + '/' + repo;
+            const bot = pr.user.login === 'dependabot[bot]' && pr.user.type === 'Bot' && sameRepo;
+            const expected = /^[0-9a-f]{40}$/.test(process.env.EXPECTED_HEAD || '') &&
+              pr.head.sha === process.env.EXPECTED_HEAD && pr.base.sha === process.env.EXPECTED_BASE;
+            const qualified = bot && expected && !pr.draft && pr.base.ref === 'main' && process.env.QUALIFIED === 'true';
+            if (!sameRepo || pr.base.ref !== 'main' || context.ref !== 'refs/heads/main') return;
+            await github.rest.repos.createCommitStatus({ owner, repo, sha: pr.head.sha,
+              context: 'Dependabot qualification', state: bot ? (qualified ? 'success' : 'failure') : 'success',
+              description: bot ? (qualified ? 'Pinned type-only patch, registry and tarballs verified' : 'Not qualified for automatic merge') : 'Manual PR; no automatic merge',
+              target_url: context.serverUrl + '/' + owner + '/' + repo + '/actions/runs/' + context.runId });
+            if (!qualified) {
+              if (bot && pr.auto_merge) await github.graphql('mutation($id:ID!){disablePullRequestAutoMerge(input:{pullRequestId:$id}){pullRequest{id}}}', {id:pr.node_id});
+              return;
+            }
+            const { data: settings } = await github.rest.repos.get({ owner, repo });
+            if (!settings.allow_auto_merge) return core.notice('Pilot inactive: native auto-merge disabled');
+            const { data: protection } = await github.rest.repos.getBranchProtection({ owner, repo, branch:'main' });
+            const checks = protection.required_status_checks;
+            for (const name of ['test', 'Dependabot policy tests', 'Dependabot qualification']) {
+              if (!checks?.strict || !checks.checks?.some(c => c.context === name && c.app_id === 15368)) throw Error('Missing strict native required check: ' + name);
+            }
+            if (!protection.enforce_admins?.enabled) throw Error('Administrator enforcement missing');
+            const { data: base } = await github.rest.repos.getBranch({ owner, repo, branch:'main' });
+            if (base.commit.sha !== process.env.EXPECTED_BASE) throw Error('Base changed: requalification required');
+            await github.graphql('mutation($id:ID!,$sha:GitObjectID!){enablePullRequestAutoMerge(input:{pullRequestId:$id,expectedHeadOid:$sha,mergeMethod:MERGE}){pullRequest{id}}}',
+              { id:pr.node_id, sha:process.env.EXPECTED_HEAD });
