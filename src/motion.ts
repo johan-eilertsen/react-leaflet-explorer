@@ -46,11 +46,6 @@ type ContinuousZoomMap = LeafletMap & {
   _moveEnd: (zoomChanged: boolean) => LeafletMap;
 };
 
-/**
- * Mirrors Leaflet's touch-pinch lifecycle for a continuous trackpad pinch.
- * Leaflet's public setZoomAround resets every tile level when called without
- * animation, which briefly exposes the frame background between wheel events.
- */
 export function createContinuousZoomSession(map: LeafletMap) {
   const continuousMap = map as ContinuousZoomMap;
   let active = false;
@@ -86,8 +81,6 @@ export function createContinuousZoomSession(map: LeafletMap) {
     finish() {
       if (!active) return;
 
-      // A final non-pinch zoom event lets GridLayer prune old levels only
-      // after the replacement tiles are ready, without a view reset.
       map.fire("zoom");
       map.fire("move");
       continuousMap._moveEnd(true);

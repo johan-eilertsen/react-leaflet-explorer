@@ -144,7 +144,7 @@ Override variables on the component or a parent. The defaults also fall back to 
 
 Motion variables can be overridden with the rest of the theme. For `prefers-reduced-motion`, the component removes spatial transforms and programmatic selection panning while preserving short opacity and colour feedback.
 
-Double-click and pointer clicks on the built-in zoom controls use the shared 240 ms map-zoom transition. Keyboard zoom, Ctrl + trackpad pinch, touch pinch and direct panning stay immediate. The transform timing is active only while Leaflet is zooming, so geometry and tiles stay aligned during a pan.
+Double-click and pointer clicks on the built-in zoom controls use the shared 240 ms map-zoom transition. Keyboard zoom, Ctrl + trackpad pinch, touch pinch and direct panning stay immediate. The transform timing is active only while Leaflet is zooming, so geometry and tiles stay aligned during a pan. A continuous trackpad pinch uses Leaflet’s touch-zoom sequence to keep existing tiles visible between wheel events. When the gesture ends, Leaflet can retire the old tile levels as their replacements become available.
 
 Low-level `MapCanvas` controls can use `zoomInImmediately` and `zoomOutImmediately` when an application renders its own keyboard-activated zoom buttons. The same motion fallbacks apply when `MapCanvas` is rendered without a surrounding `MapExplorer`.
 

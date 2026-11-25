@@ -2,6 +2,8 @@
 
 ## Qualification
 
+The GitHub Actions update schedule has a three-day cooldown. Review minor action updates manually after seven days and major updates after thirty days.
+
 Only an existing, exactly pinned devDependencies.@types/leaflet patch within
 1.9.x can qualify. Exactly two modified files: package.json and package-lock.json.
 No scripts, runtime/peer dependencies, package version, CI, rights, release, data,

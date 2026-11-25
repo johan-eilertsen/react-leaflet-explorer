@@ -3,7 +3,6 @@ import { expect, test, type Page } from "@playwright/test";
 const tile = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a4LsAAAAASUVORK5CYII=", "base64");
 
 async function pointBesideLine(page: Page, offset: number) {
-  // Read only rendered SVG geometry, not Leaflet's private hit-testing state.
   return page.locator("path.leaflet-interactive:not(.map-explorer__line-hit-area)").first().evaluate((element, distance) => {
     const path = element as SVGPathElement;
     const length = path.getTotalLength();

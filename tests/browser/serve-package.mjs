@@ -8,12 +8,9 @@ const root = resolve(".");
 const staging = mkdtempSync(join(tmpdir(), "leaflet-browser-package-"));
 process.on("exit", () => rmSync(staging, { recursive: true, force: true }));
 
-// Test the exact files npm would distribute, using installed peer dependencies.
-// No published version or neighboring application participates in resolution.
 const packed = JSON.parse(execFileSync("npm", [
   "pack", "--ignore-scripts", "--json", "--pack-destination", staging,
 ], { cwd: root, encoding: "utf8" }));
-// npm 11 returns an array; npm 12 keys the same metadata by package name.
 const [artifact] = Array.isArray(packed) ? packed : Object.values(packed ?? {});
 const filename = artifact?.filename;
 if (typeof filename !== "string" || !filename) {

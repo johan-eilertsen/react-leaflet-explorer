@@ -33,7 +33,6 @@ updates:
     schedule:
       interval: weekly
     cooldown:
-      # Actions har bare standardkarantene; minor/major vurderes manuelt etter 7/30 dager.
       default-days: 3
     groups:
       actions-security:

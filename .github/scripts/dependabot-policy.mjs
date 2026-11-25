@@ -13,7 +13,6 @@ function validateOSV(response) {
     if (row.vulns === undefined) continue;
     assert.ok(Array.isArray(row.vulns), "Invalid OSV vulnerabilities");
     for (const v of row.vulns) {
-      // querybatch returns only minimal vulnerability IDs and modification times.
       assert.ok(object(v) && Object.keys(v).every(k => ["id", "modified"].includes(k))
         && typeof v.id === "string" && /^[A-Za-z0-9][A-Za-z0-9._-]+$/.test(v.id)
         && typeof v.modified === "string" && /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:[.][0-9]{1,9})?Z$/.test(v.modified)
@@ -104,7 +103,6 @@ export async function qualify({ pr, repository, files, before, after, registry, 
     previousAdvisories: (security.results[0].vulns ?? []).map(v => v.id) };
 }
 
-// REST supplies the signed payload; GraphQL binds its verified signature to GitHub.
 export function qualifyHead(pr, commit, repository) {
   assert.ok(isNativeBot(pr, REPOSITORY));
   assert.equal(pr.commits, 1);
