@@ -1,0 +1,13 @@
+name: Source comments
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  comments:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: johan-eilertsen/source-comment-check@main
